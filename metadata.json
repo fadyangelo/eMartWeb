@@ -1,0 +1,6 @@
+{
+  "name": "eMart",
+  "description": "A high-fidelity full-stack e-commerce platform featuring a dual-language (English/Arabic) catalog, checkout authentication, Stripe/Kasheir payment integrations, status-tracked orders, and a complete administrative dashboard with sales analytics, product management, and role-based access control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
