@@ -5,9 +5,10 @@ import { createServer as createViteServer } from 'vite';
 import { getDb, saveDb } from './server/db';
 import { User, Product, Category, Order, OrderStatus, StatusHistoryItem, SystemSettings, Transaction, BackupFile, ActivityLog, ShippingCity, RestoreEvent } from './src/types';
 import Stripe from 'stripe';
+import nodemailer from 'nodemailer';
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 // JSON request body parser
 app.use(express.json());
@@ -181,7 +182,63 @@ app.post('/api/auth/signup', (req: Request, res: Response) => {
 // Verification codes store for password resets
 const verificationCodes = new Map<string, { code: string; expiresAt: number }>();
 
-app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
+async function sendVerificationEmail(toEmail: string, code: string) {
+  const db = getDb();
+  const settings = (db.settings || {}) as any;
+  const mailUser = settings.mailUser || 'itsparkeg@gmail.com';
+  const mailPass = settings.mailPass || 'gxht wyei usvw vxkh';
+  const salesEmail = settings.salesEmail || 'sales@itspark-eg.com';
+
+  if (!mailUser || !mailPass) {
+    throw new Error('Mail settings (user/password) are not configured in system settings.');
+  }
+
+  const domain = mailUser.includes('@') ? mailUser.split('@')[1] : 'gmail.com';
+  const isGmail = domain.toLowerCase() === 'gmail.com';
+
+  const transporter = nodemailer.createTransport(
+    isGmail
+      ? {
+          service: 'gmail',
+          auth: {
+            user: mailUser,
+            pass: mailPass,
+          },
+        }
+      : {
+          host: `smtp.${domain}`,
+          port: 587,
+          secure: false,
+          auth: {
+            user: mailUser,
+            pass: mailPass,
+          },
+        }
+  );
+
+  const mailOptions = {
+    from: `"eMart Support" <${mailUser}>`,
+    to: toEmail,
+    subject: 'eMart Password Reset Verification Code',
+    text: `You have requested to reset your password. Your 6-digit verification code is: ${code}\n\nThis code will expire in 10 minutes.\n\nIf you did not request this, please ignore this email.`,
+    html: `
+      <div style="font-family: sans-serif; padding: 24px; max-width: 600px; margin: auto; border: 1px solid #f0f0f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+        <h2 style="color: #4f46e5; margin-bottom: 16px; font-weight: 800; font-family: 'Inter', sans-serif;">Password Reset Verification</h2>
+        <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">You have requested to reset your password on eMart. Please use the following 6-digit verification code to complete your password reset:</p>
+        <div style="background-color: #f3f4f6; padding: 18px; text-align: center; border-radius: 12px; margin: 24px 0; border: 1px dashed #e5e7eb;">
+          <span style="font-size: 28px; font-weight: 800; letter-spacing: 6px; color: #111827; font-family: monospace;">${code}</span>
+        </div>
+        <p style="font-size: 12px; color: #9ca3af;">This code is valid for 10 minutes. If you did not initiate this request, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #f0f0f0; margin: 24px 0;" />
+        <p style="font-size: 11px; color: #9ca3af; text-align: center; margin: 0;">eMart Store &bull; Contact support at ${salesEmail}</p>
+      </div>
+    `,
+  };
+
+  await transporter.sendMail(mailOptions);
+}
+
+app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ message: 'Email is required.' });
@@ -200,12 +257,33 @@ app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
   });
 
-  // Log action
-  logActivity({ user, ip: req.ip, headers: req.headers, socket: req.socket }, 'Forgot Password Requested', `Verification code generated for ${email}.`);
+  let emailSent = false;
+  let emailError = '';
+
+  try {
+    await sendVerificationEmail(email.toLowerCase(), code);
+    emailSent = true;
+    logActivity(
+      { user, ip: req.ip, headers: req.headers, socket: req.socket },
+      'Forgot Password Requested',
+      `Verification code ${code} generated and sent to email ${email}.`
+    );
+  } catch (err: any) {
+    console.error('Failed to send verification email:', err);
+    emailError = err.message || 'SMTP delivery failed';
+    logActivity(
+      { user, ip: req.ip, headers: req.headers, socket: req.socket },
+      'Forgot Password Email Failed',
+      `Verification code ${code} generated but failed to send to ${email}. Error: ${emailError}`
+    );
+  }
 
   res.json({
-    message: 'Verification code generated successfully.',
-    code, // Returned directly so the client-side can display/use it easily
+    message: emailSent
+      ? 'Verification code generated and sent to your email successfully.'
+      : 'Verification code generated, but email delivery failed. Please verify your SMTP configurations.',
+    emailSent,
+    error: emailError,
   });
 });
 
@@ -246,6 +324,28 @@ app.post('/api/auth/reset-password', (req: Request, res: Response) => {
   logActivity({ user, ip: req.ip, headers: req.headers, socket: req.socket }, 'Password Reset Completed', `Password successfully reset for ${email}.`);
 
   res.json({ message: 'Password has been reset successfully.' });
+});
+
+app.post('/api/auth/change-password', authenticate, (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Current password and new password are required.' });
+  }
+
+  const user = (req as any).user as User;
+  const db = getDb();
+
+  const storedPassword = db.passwords[user.id];
+  if (storedPassword !== currentPassword) {
+    return res.status(400).json({ message: 'Incorrect current password.' });
+  }
+
+  db.passwords[user.id] = newPassword;
+  saveDb(db);
+
+  logActivity(req, 'Change Password', `Successfully changed password for user ${user.email}`);
+
+  res.json({ message: 'Password changed successfully.' });
 });
 
 // ----------------------------------------------------
@@ -848,9 +948,48 @@ app.patch('/api/orders/:id/status', requireAdminOrManager, checkPermission('mana
   }
 
   // Update status and append tracking history
-  order.status = status as OrderStatus;
+  const oldStatus = order.status;
+  const newStatus = status as OrderStatus;
+
+  // If status is changed to refunded or cancelled, and it wasn't already refunded/cancelled, put product stock back!
+  const isTransitioningToRefundedOrCancelled = 
+    (newStatus === 'refunded' || newStatus === 'cancelled') && 
+    (oldStatus !== 'refunded' && oldStatus !== 'cancelled');
+
+  if (isTransitioningToRefundedOrCancelled) {
+    for (const item of order.items) {
+      const prod = db.products.find(p => p.id === item.productId);
+      if (prod) {
+        const isStockLimited = prod.stock !== undefined && prod.stock !== null && (prod.stock as any) !== '';
+        if (isStockLimited) {
+          prod.stock = Number(prod.stock) + item.quantity;
+        }
+        prod.salesCount = Math.max(0, (prod.salesCount || 0) - item.quantity);
+      }
+    }
+  }
+
+  // Also, if transitioning FROM refunded or cancelled BACK to a normal status, we should re-deduct the stock!
+  const isTransitioningFromRefundedOrCancelled = 
+    (oldStatus === 'refunded' || oldStatus === 'cancelled') && 
+    (newStatus !== 'refunded' && newStatus !== 'cancelled');
+
+  if (isTransitioningFromRefundedOrCancelled) {
+    for (const item of order.items) {
+      const prod = db.products.find(p => p.id === item.productId);
+      if (prod) {
+        const isStockLimited = prod.stock !== undefined && prod.stock !== null && (prod.stock as any) !== '';
+        if (isStockLimited) {
+          prod.stock = Math.max(0, Number(prod.stock) - item.quantity);
+        }
+        prod.salesCount = (prod.salesCount || 0) + item.quantity;
+      }
+    }
+  }
+
+  order.status = newStatus;
   order.statusHistory.push({
-    status: status as OrderStatus,
+    status: newStatus,
     updatedAt: new Date().toISOString(),
     updatedBy: user.email,
   });
@@ -1436,6 +1575,18 @@ app.post('/api/admin/payments/:txId/refund', requireAdminOrManager, (req: Reques
     updatedAt: new Date().toISOString(),
     updatedBy: user.email,
   });
+
+  // Put product stock back
+  for (const item of order.items) {
+    const prod = db.products.find(p => p.id === item.productId);
+    if (prod) {
+      const isStockLimited = prod.stock !== undefined && prod.stock !== null && (prod.stock as any) !== '';
+      if (isStockLimited) {
+        prod.stock = Number(prod.stock) + item.quantity;
+      }
+      prod.salesCount = Math.max(0, (prod.salesCount || 0) - item.quantity);
+    }
+  }
 
   if (order.paymentDetails) {
     order.paymentDetails.refundId = refundTx.transactionNumber;

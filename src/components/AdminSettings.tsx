@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { SystemSettings } from '../types';
-import { Save, AlertTriangle, Check, Loader2, ShieldCheck } from 'lucide-react';
+import { Save, AlertTriangle, Check, Loader2, ShieldCheck, Mail, Link, Key, Eye, EyeOff } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
   const { language, apiFetch } = useApp();
@@ -19,12 +19,21 @@ export const AdminSettings: React.FC = () => {
     promoTimerTo: '',
     promoTimerTextEn: '',
     promoTimerTextAr: '',
+    mailUser: '',
+    mailPass: '',
+    baseUrl: '',
+    salesEmail: '',
   });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const [showStripeTest, setShowStripeTest] = useState(false);
+  const [showStripeLive, setShowStripeLive] = useState(false);
+  const [showKasheirTest, setShowKasheirTest] = useState(false);
+  const [showKasheirLive, setShowKasheirLive] = useState(false);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -267,13 +276,22 @@ export const AdminSettings: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     {isAr ? 'مفتاح Stripe السري للتجربة (Test Secret Key)' : 'Stripe Test Secret Key'}
                   </label>
-                  <input
-                    type="password"
-                    value={settings.stripeTestSecretKey || ''}
-                    onChange={(e) => setSettings({ ...settings, stripeTestSecretKey: e.target.value })}
-                    placeholder="sk_test_..."
-                    className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showStripeTest ? "text" : "password"}
+                      value={settings.stripeTestSecretKey || ''}
+                      onChange={(e) => setSettings({ ...settings, stripeTestSecretKey: e.target.value })}
+                      placeholder="sk_test_..."
+                      className={`w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isAr ? 'pl-10' : 'pr-10'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStripeTest(!showStripeTest)}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none ${isAr ? 'left-3' : 'right-3'}`}
+                    >
+                      {showStripeTest ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Stripe Live Key */}
@@ -281,13 +299,22 @@ export const AdminSettings: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     {isAr ? 'مفتاح Stripe السري للوضع الحي (Live Secret Key)' : 'Stripe Live Secret Key'}
                   </label>
-                  <input
-                    type="password"
-                    value={settings.stripeLiveSecretKey || ''}
-                    onChange={(e) => setSettings({ ...settings, stripeLiveSecretKey: e.target.value })}
-                    placeholder="sk_live_..."
-                    className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showStripeLive ? "text" : "password"}
+                      value={settings.stripeLiveSecretKey || ''}
+                      onChange={(e) => setSettings({ ...settings, stripeLiveSecretKey: e.target.value })}
+                      placeholder="sk_live_..."
+                      className={`w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isAr ? 'pl-10' : 'pr-10'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowStripeLive(!showStripeLive)}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none ${isAr ? 'left-3' : 'right-3'}`}
+                    >
+                      {showStripeLive ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Kasheir Test Key */}
@@ -295,13 +322,22 @@ export const AdminSettings: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     {isAr ? 'مفتاح Kasheir للتجربة (Test API Key)' : 'Kasheir Test API Key'}
                   </label>
-                  <input
-                    type="password"
-                    value={settings.kasheirTestKey || ''}
-                    onChange={(e) => setSettings({ ...settings, kasheirTestKey: e.target.value })}
-                    placeholder="pk_test_..."
-                    className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showKasheirTest ? "text" : "password"}
+                      value={settings.kasheirTestKey || ''}
+                      onChange={(e) => setSettings({ ...settings, kasheirTestKey: e.target.value })}
+                      placeholder="pk_test_..."
+                      className={`w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isAr ? 'pl-10' : 'pr-10'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKasheirTest(!showKasheirTest)}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none ${isAr ? 'left-3' : 'right-3'}`}
+                    >
+                      {showKasheirTest ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Kasheir Live Key */}
@@ -309,13 +345,22 @@ export const AdminSettings: React.FC = () => {
                   <label className="block text-xs font-medium text-gray-500 mb-1">
                     {isAr ? 'مفتاح Kasheir للوضع الحي (Live API Key)' : 'Kasheir Live API Key'}
                   </label>
-                  <input
-                    type="password"
-                    value={settings.kasheirLiveKey || ''}
-                    onChange={(e) => setSettings({ ...settings, kasheirLiveKey: e.target.value })}
-                    placeholder="pk_live_..."
-                    className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showKasheirLive ? "text" : "password"}
+                      value={settings.kasheirLiveKey || ''}
+                      onChange={(e) => setSettings({ ...settings, kasheirLiveKey: e.target.value })}
+                      placeholder="pk_live_..."
+                      className={`w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isAr ? 'pl-10' : 'pr-10'}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKasheirLive(!showKasheirLive)}
+                      className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none ${isAr ? 'left-3' : 'right-3'}`}
+                    >
+                      {showKasheirLive ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -460,6 +505,93 @@ export const AdminSettings: React.FC = () => {
               </p>
             </div>
           )}
+        </div>
+
+        {/* 6. SMTP EMAIL CONFIGURATION */}
+        <div className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100" id="smtp-settings-section">
+          <h3 className="text-sm font-bold text-gray-800 border-b border-slate-100 pb-2 flex items-center gap-2">
+            <span className="w-1.5 h-4 bg-indigo-600 rounded-full"></span>
+            {isAr ? 'إعدادات البريد الإلكتروني (SMTP)' : 'SMTP Email Configuration'}
+          </h3>
+          <p className="text-xs text-gray-400">
+            {isAr
+              ? 'قم بتكوين إعدادات SMTP لإرسال رسائل التحقق من كلمة المرور المنسية والإشعارات.'
+              : 'Configure SMTP credentials to send password verification codes and system notifications.'}
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5 flex items-center gap-1" id="smtp-username-label">
+                <Mail size={14} className="text-indigo-500" />
+                {isAr ? 'بريد SMTP الإلكتروني (اسم المستخدم)' : 'SMTP Username / Email Address'}
+              </label>
+              <input
+                id="smtp-username-input"
+                type="email"
+                value={settings.mailUser || ''}
+                onChange={(e) => setSettings({ ...settings, mailUser: e.target.value })}
+                placeholder="example@gmail.com"
+                className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                {isAr ? 'البريد الإلكتروني المستخدم لإرسال الرسائل (مثال: بريد Gmail)' : 'The email address used to authenticate and send emails.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5 flex items-center gap-1" id="smtp-password-label">
+                <Key size={14} className="text-indigo-500" />
+                {isAr ? 'كلمة مرور التطبيق (SMTP Password)' : 'SMTP Password / App Password'}
+              </label>
+              <input
+                id="smtp-password-input"
+                type="password"
+                value={settings.mailPass || ''}
+                onChange={(e) => setSettings({ ...settings, mailPass: e.target.value })}
+                placeholder="••••••••••••••••"
+                className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                {isAr ? 'كلمة مرور التطبيق المكونة من ١٦ حرفًا لحساب Gmail الخاص بك.' : 'For Gmail, use a 16-character Google App Password.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5 flex items-center gap-1" id="sales-email-label">
+                <Mail size={14} className="text-indigo-500" />
+                {isAr ? 'بريد المبيعات والدعم الإلكتروني' : 'Sales / Support Email'}
+              </label>
+              <input
+                id="sales-email-input"
+                type="email"
+                value={settings.salesEmail || ''}
+                onChange={(e) => setSettings({ ...settings, salesEmail: e.target.value })}
+                placeholder="sales@example.com"
+                className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                {isAr ? 'البريد الإلكتروني الذي يظهر للعملاء في تذييل الرسائل للتواصل.' : 'The contact email displayed to customers in the email footers.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-600 mb-1.5 flex items-center gap-1" id="base-url-label">
+                <Link size={14} className="text-indigo-500" />
+                {isAr ? 'رابط المتجر الرئيسي (Base URL)' : 'Store Base URL'}
+              </label>
+              <input
+                id="base-url-input"
+                type="url"
+                value={settings.baseUrl || ''}
+                onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
+                placeholder="https://yourstore.com"
+                className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+              />
+              <p className="text-[10px] text-gray-400 mt-1">
+                {isAr ? 'عنوان URL للمتجر لتضمينه في روابط الرسائل التلقائية.' : 'The public URL of your store to embed in automated emails.'}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* BUTTON */}

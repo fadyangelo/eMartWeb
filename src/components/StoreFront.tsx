@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Category } from '../types';
-import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X, Video } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
   const { language, t, addToCart, apiFetch, settings, getProductPrice, token, user } = useApp();
@@ -489,16 +489,16 @@ export const StoreFront: React.FC = () => {
           <p className="text-sm">Try widening your filters or keywords.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
           {products.map(p => (
             <div
               id={`prod-card-${p.id}`}
               key={p.id}
-              className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-emerald-100 transition-all duration-300 flex flex-col h-[400px]"
+              className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-emerald-100 transition-all duration-300 flex flex-col h-[350px] sm:h-[400px]"
             >
               {/* Product Image */}
               <div 
-                className="relative h-48 bg-gray-50 overflow-hidden shrink-0 cursor-pointer"
+                className="relative h-32 sm:h-48 bg-gray-50 overflow-hidden shrink-0 cursor-pointer"
                 onClick={() => setSelectedProduct(p)}
               >
                 <img
@@ -542,20 +542,9 @@ export const StoreFront: React.FC = () => {
                             {language === 'ar' ? `متبقي ${stockNum} فقط!` : `Only ${stockNum} left!`}
                           </span>
                         );
-                      } else {
-                        return (
-                          <span className="bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
-                            {language === 'ar' ? `متوفر: ${stockNum}` : `In Stock: ${stockNum}`}
-                          </span>
-                        );
                       }
-                    } else {
-                      return (
-                        <span className="bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
-                          {language === 'ar' ? 'متوفر' : 'In Stock'}
-                        </span>
-                      );
                     }
+                    return null;
                   })()}
                   
                   {p.topSelling && (
@@ -575,7 +564,7 @@ export const StoreFront: React.FC = () => {
               </div>
 
               {/* Product Info */}
-              <div className="p-5 flex flex-col justify-between flex-1">
+              <div className="p-3 sm:p-5 flex flex-col justify-between flex-1">
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
@@ -635,7 +624,7 @@ export const StoreFront: React.FC = () => {
                     id={`add-cart-btn-${p.id}`}
                     onClick={() => handleAddToCart(p)}
                     disabled={p.stock !== undefined && p.stock !== null && (p.stock as any) !== '' && Number(p.stock) === 0}
-                    className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-all ${
+                    className={`flex items-center gap-1 px-1.5 py-1 sm:px-3 sm:py-2 text-[10px] sm:text-xs font-bold rounded-lg transition-all ${
                       p.stock !== undefined && p.stock !== null && (p.stock as any) !== '' && Number(p.stock) === 0
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : addedProductIds[p.id]
@@ -855,23 +844,37 @@ export const StoreFront: React.FC = () => {
                     <div className="space-y-4 animate-fade-in text-sm text-gray-600 leading-relaxed">
                       <p>{language === 'ar' ? selectedProduct.descriptionAr : selectedProduct.descriptionEn}</p>
                       
-                      {/* Embedded Video (if available) */}
-                      {selectedProduct.videoUrl && getYouTubeEmbedUrl(selectedProduct.videoUrl) && (
+                      {/* Embedded Video / Uploaded Video File */}
+                      {selectedProduct.videoUrl && (
                         <div className="space-y-2 pt-2">
                           <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                            <Youtube className="text-red-500" size={16} />
+                            {getYouTubeEmbedUrl(selectedProduct.videoUrl) ? (
+                              <Youtube className="text-red-500" size={16} />
+                            ) : (
+                              <Video className="text-emerald-500" size={16} />
+                            )}
                             {language === 'ar' ? 'الفيديو التعريفي للمنتج' : 'Product Video Demonstration'}
                           </span>
-                          <div className="relative aspect-video w-full rounded-2xl overflow-hidden border bg-black shadow-inner">
-                            <iframe
-                              className="absolute top-0 left-0 w-full h-full"
-                              src={getYouTubeEmbedUrl(selectedProduct.videoUrl) || ''}
-                              title="Product Video"
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            ></iframe>
-                          </div>
+                          {getYouTubeEmbedUrl(selectedProduct.videoUrl) ? (
+                            <div className="relative aspect-video w-full rounded-2xl overflow-hidden border bg-black shadow-inner">
+                              <iframe
+                                className="absolute top-0 left-0 w-full h-full"
+                                src={getYouTubeEmbedUrl(selectedProduct.videoUrl) || ''}
+                                title="Product Video"
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              ></iframe>
+                            </div>
+                          ) : (
+                            <div className="relative aspect-video w-full rounded-2xl overflow-hidden border bg-black shadow-inner">
+                              <video
+                                className="w-full h-full object-contain bg-black"
+                                controls
+                                src={selectedProduct.videoUrl}
+                              />
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -996,26 +999,23 @@ export const StoreFront: React.FC = () => {
 
               {/* Add to Cart Footer block */}
               <div className="pt-6 border-t border-gray-100 space-y-3">
-                <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
-                  <span>Stock Status:</span>
-                  <span>
-                    {(() => {
-                      const isStockLimited = selectedProduct.stock !== undefined && selectedProduct.stock !== null && (selectedProduct.stock as any) !== '';
-                      if (isStockLimited) {
-                        const stockNum = Number(selectedProduct.stock);
-                        if (stockNum === 0) {
-                          return <span className="text-rose-600 font-bold">{t('outOfStock')}</span>;
-                        } else if (stockNum < 10) {
-                          return <span className="text-amber-600 font-bold">{language === 'ar' ? `متبقي ${stockNum} فقط!` : `Only ${stockNum} left!`}</span>;
-                        } else {
-                          return <span className="text-emerald-600 font-bold">{language === 'ar' ? `متوفر: ${stockNum} وحدة` : `${stockNum} units available`}</span>;
-                        }
-                      } else {
-                        return <span className="text-emerald-600 font-bold">{language === 'ar' ? 'متوفر' : 'In Stock'}</span>;
-                      }
-                    })()}
-                  </span>
-                </div>
+                {(() => {
+                  const isStockLimited = selectedProduct.stock !== undefined && selectedProduct.stock !== null && (selectedProduct.stock as any) !== '';
+                  const stockNum = isStockLimited ? Number(selectedProduct.stock) : 999;
+                  if (stockNum >= 10) return null;
+                  return (
+                    <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
+                      <span>Stock Status:</span>
+                      <span>
+                        {stockNum === 0 ? (
+                          <span className="text-rose-600 font-bold">{t('outOfStock')}</span>
+                        ) : (
+                          <span className="text-amber-600 font-bold">{language === 'ar' ? `متبقي ${stockNum} فقط!` : `Only ${stockNum} left!`}</span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 <button
                   id={`quick-view-add-cart-btn-${selectedProduct.id}`}

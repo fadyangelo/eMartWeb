@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp, ActiveTab } from '../context/AppContext';
-import { X, Key, User as UserIcon, Mail, ShieldCheck, ArrowLeft, RefreshCw, HelpCircle, AlertCircle } from 'lucide-react';
+import { X, Key, User as UserIcon, Mail, ShieldCheck, ArrowLeft, RefreshCw, HelpCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -25,7 +25,10 @@ export const AuthModal: React.FC = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  const [simulatedCode, setSimulatedCode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,13 +54,20 @@ export const AuthModal: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ email }),
       });
-      setSimulatedCode(res.code);
-      setSuccess(
-        isAr 
-          ? `تم توليد رمز التحقق بنجاح! الرمز هو: ${res.code}`
-          : `Verification code generated successfully! Simulated code: ${res.code}`
-      );
-      setAuthMode('verify');
+      if (res.emailSent) {
+        setSuccess(
+          isAr
+            ? `تم إرسال رمز التحقق بنجاح إلى بريدك الإلكتروني (${email})!`
+            : `Verification code has been sent to your email address (${email}) successfully!`
+        );
+        setAuthMode('verify');
+      } else {
+        setError(
+          isAr
+            ? `فشل إرسال البريد الإلكتروني. يرجى مراجعة إعدادات SMTP في لوحة التحكم. الخطأ: ${res.error || ''}`
+            : `Failed to send verification email. Please verify SMTP configurations in Admin Settings. Error: ${res.error || 'SMTP delivery failed'}`
+        );
+      }
     } catch (err: any) {
       setError(err.message || (isAr ? 'لم نتمكن من العثور على هذا البريد الإلكتروني.' : 'Failed to process request. Email might not exist.'));
     } finally {
@@ -250,13 +260,20 @@ export const AuthModal: React.FC = () => {
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                 <input
                   id="auth-password-input"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
+                  className="w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 
@@ -360,16 +377,6 @@ export const AuthModal: React.FC = () => {
         {/* Verify Code and Reset Password Form */}
         {authMode === 'verify' && (
           <form onSubmit={handleResetSubmit} className="p-6 pt-4 space-y-4 animate-fade-in">
-            {/* Simulation Code notice box */}
-            {simulatedCode && (
-              <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
-                <span className="block text-[10px] font-black uppercase text-emerald-800 tracking-wider mb-1">
-                  {isAr ? '🔑 رمز التحقق المحاكي (للاختبار):' : '🔑 Simulated Verification Code:'}
-                </span>
-                <span className="font-mono text-lg font-black text-emerald-700 tracking-widest">{simulatedCode}</span>
-              </div>
-            )}
-
             <div className="space-y-1">
               <label className="block text-xs font-bold text-gray-700">{isAr ? 'رمز التحقق المكون من 6 أرقام' : '6-Digit Verification Code'}</label>
               <input
@@ -390,13 +397,20 @@ export const AuthModal: React.FC = () => {
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                 <input
                   id="reset-new-password"
-                  type="password"
+                  type={showNewPassword ? "text" : "password"}
                   required
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
+                  className="w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 
@@ -406,13 +420,20 @@ export const AuthModal: React.FC = () => {
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                 <input
                   id="reset-confirm-password"
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   required
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
+                  className="w-full pl-10 pr-10 py-2 text-sm border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
             </div>
 

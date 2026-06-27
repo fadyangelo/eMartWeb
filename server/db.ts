@@ -339,6 +339,10 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   promoTimerTextAr: 'تخفيضات الصيف الكبرى - خصم يصل إلى ٥٠٪!',
   codExtraChargeEnabled: false,
   codExtraChargeAmount: 0,
+  mailUser: 'itsparkeg@gmail.com',
+  mailPass: 'gxht wyei usvw vxkh',
+  baseUrl: 'https://shop.itspark-eg.com',
+  salesEmail: 'sales@itspark-eg.com',
 };
 
 export const generateMockTransactions = (orders: Order[]): Transaction[] => {

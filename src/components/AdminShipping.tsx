@@ -4,8 +4,9 @@ import { ShippingCity } from '../types';
 import { Plus, Edit2, Trash2, Save, X, Loader2, Landmark, CheckCircle, AlertCircle } from 'lucide-react';
 
 export const AdminShipping: React.FC = () => {
-  const { language, apiFetch } = useApp();
+  const { language, apiFetch, settings } = useApp();
   const isAr = language === 'ar';
+  const curr = settings?.currency || 'USD';
 
   const [cities, setCities] = useState<ShippingCity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -198,22 +199,22 @@ export const AdminShipping: React.FC = () => {
                     <p className="text-[10px] text-gray-400 font-medium font-mono">{isAr ? city.nameEn : city.nameAr}</p>
                   </div>
                   <span className="bg-indigo-50 text-indigo-700 text-xs font-black px-2.5 py-1 rounded-md font-mono">
-                    {city.defaultShippingFee} EGP
+                    {city.defaultShippingFee} {curr}
                   </span>
                 </div>
 
                 <div className="space-y-2 text-xs text-gray-500 font-medium">
                   <div className="flex justify-between">
                     <span>{isAr ? 'الحد الأدنى للطلب:' : 'Min Order:'}</span>
-                    <span className="font-bold font-mono text-gray-700">{city.minOrderAmount} EGP</span>
+                    <span className="font-bold font-mono text-gray-700">{city.minOrderAmount} {curr}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>{isAr ? 'قيمة خصم الشحن:' : 'Shipping Discount:'}</span>
-                    <span className="font-bold font-mono text-rose-600">-{city.discountAmount} EGP</span>
+                    <span className="font-bold font-mono text-rose-600">-{city.discountAmount} {curr}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>{isAr ? 'لتطبيق الخصم (الطلب فوق):' : 'Apply Discount Above:'}</span>
-                    <span className="font-bold font-mono text-emerald-600">{city.minOrderForDiscount} EGP</span>
+                    <span className="font-bold font-mono text-emerald-600">{city.minOrderForDiscount} {curr}</span>
                   </div>
                 </div>
               </div>
@@ -327,7 +328,7 @@ export const AdminShipping: React.FC = () => {
               {/* Default Fee */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">
-                  {isAr ? 'رسوم الشحن الافتراضية (EGP)' : 'Default Shipping Fee (EGP)'}
+                  {isAr ? `رسوم الشحن الافتراضية (${curr})` : `Default Shipping Fee (${curr})`}
                 </label>
                 <input
                   type="number"
@@ -342,7 +343,7 @@ export const AdminShipping: React.FC = () => {
               {/* Min Order for Shipping */}
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">
-                  {isAr ? 'الحد الأدنى لقيمة الطلب لتفعيل التوصيل (EGP)' : 'Min Order Amount for Delivery (EGP)'}
+                  {isAr ? `الحد الأدنى لقيمة الطلب لتفعيل التوصيل (${curr})` : `Min Order Amount for Delivery (${curr})`}
                 </label>
                 <input
                   type="number"
@@ -358,7 +359,7 @@ export const AdminShipping: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">
-                    {isAr ? 'قيمة الخصم في الشحن (EGP)' : 'Shipping Discount (EGP)'}
+                    {isAr ? `قيمة الخصم في الشحن (${curr})` : `Shipping Discount (${curr})`}
                   </label>
                   <input
                     type="number"
@@ -372,7 +373,7 @@ export const AdminShipping: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-bold text-gray-600 mb-1">
-                    {isAr ? 'حد الخصم الأدنى للطلب (EGP)' : 'Apply Discount Above (EGP)'}
+                    {isAr ? `حد الخصم الأدنى للطلب (${curr})` : `Apply Discount Above (${curr})`}
                   </label>
                   <input
                     type="number"

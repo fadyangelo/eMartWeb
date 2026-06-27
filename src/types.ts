@@ -173,6 +173,10 @@ export interface SystemSettings {
   promoTimerTextAr: string;
   codExtraChargeEnabled?: boolean;
   codExtraChargeAmount?: number;
+  mailUser?: string;
+  mailPass?: string;
+  baseUrl?: string;
+  salesEmail?: string;
 }
 
 export interface Transaction {

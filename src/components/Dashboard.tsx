@@ -148,7 +148,7 @@ export const Dashboard: React.FC = () => {
         </h4>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full min-w-[600px] text-left border-collapse">
             <thead>
               <tr className="border-b border-gray-100 text-xs text-gray-400 uppercase font-semibold">
                 <th className="py-3 px-4">Product Name</th>

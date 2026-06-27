@@ -430,7 +430,7 @@ export const AdminPayments: React.FC = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse" dir={isAr ? 'rtl' : 'ltr'}>
+              <table className="w-full min-w-[1000px] text-left border-collapse" dir={isAr ? 'rtl' : 'ltr'}>
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-gray-100">
                     <th className="px-6 py-4">{isAr ? 'المعرف والعميل' : 'ID & Client'}</th>

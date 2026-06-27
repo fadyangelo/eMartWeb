@@ -18,6 +18,7 @@ import { AdminShipping } from './components/AdminShipping';
 import { RefundPolicy } from './components/RefundPolicy';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
+import { UserProfileModal } from './components/UserProfileModal';
 
 const AppContent: React.FC = () => {
   const { 
@@ -39,6 +40,7 @@ const AppContent: React.FC = () => {
   const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [adminMenuOpen, setAdminMenuOpen] = React.useState(false);
   const [adminSidebarCollapsed, setAdminSidebarCollapsed] = React.useState(false);
+  const [showProfileModal, setShowProfileModal] = React.useState(false);
   const isAr = language === 'ar';
 
   React.useEffect(() => {
@@ -347,10 +349,20 @@ const AppContent: React.FC = () => {
             {/* User Profile Info / Authorization toggles */}
             {user ? (
               <div className="flex items-center gap-2 pl-2 border-l border-gray-150">
-                <div className="text-right hidden sm:block">
-                  <p className="text-xs font-extrabold text-gray-800 leading-none">{user.name}</p>
-                  <span className="text-[10px] font-bold text-gray-400 capitalize">{user.role}</span>
-                </div>
+                <button
+                  id="header-profile-btn"
+                  onClick={() => setShowProfileModal(true)}
+                  className="text-right flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 transition cursor-pointer"
+                  title={isAr ? 'الملف الشخصي وتغيير كلمة المرور' : 'Profile & Change Password'}
+                >
+                  <div className="w-7 h-7 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center font-bold text-xs border border-indigo-100 shrink-0">
+                    {user.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs font-extrabold text-gray-800 leading-none">{user.name}</p>
+                    <span className="text-[10px] font-bold text-indigo-600 hover:underline capitalize">{user.role}</span>
+                  </div>
+                </button>
                 <button
                   id="header-logout-btn"
                   onClick={logout}
@@ -525,7 +537,7 @@ const AppContent: React.FC = () => {
       </main>
 
       {/* 5. GLOBAL FOOTER */}
-      <footer className="bg-white border-t border-gray-100 py-8 text-center text-xs text-gray-400 font-medium shrink-0">
+      <footer className="bg-white border-t border-gray-100 pt-8 pb-24 md:pb-8 text-center text-xs text-gray-400 font-medium shrink-0">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <p>Copyright &copy; {new Date().getFullYear()}. All Rights Reserved to ITSPARK</p>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
@@ -555,6 +567,9 @@ const AppContent: React.FC = () => {
 
       {/* Global Auth modal prompt */}
       <AuthModal />
+
+      {/* Global User Profile modal */}
+      <UserProfileModal isOpen={showProfileModal} onClose={() => setShowProfileModal(false)} />
     </div>
   );
 };

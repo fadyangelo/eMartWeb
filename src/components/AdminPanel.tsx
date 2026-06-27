@@ -114,6 +114,9 @@ export const AdminPanel: React.FC = () => {
   const [prodEnabled, setProdEnabled] = useState(true);
   const [prodDiscountPercent, setProdDiscountPercent] = useState('');
   const [prodDiscountAmount, setProdDiscountAmount] = useState('');
+  const [prodAdditionalImages, setProdAdditionalImages] = useState<string[]>([]);
+  const [prodDatasheetUrl, setProdDatasheetUrl] = useState('');
+  const [prodVideoUrl, setProdVideoUrl] = useState('');
 
   // Category Form
   const [catNameEn, setCatNameEn] = useState('');
@@ -340,6 +343,47 @@ export const AdminPanel: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleGenericFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    type: 'pdf' | 'video' | 'additional-image'
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (type === 'pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Only PDF files are allowed for data sheets!', false);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64data = reader.result as string;
+        const res = await apiFetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: base64data, name: file.name }),
+        });
+        if (res && res.url) {
+          if (type === 'pdf') {
+            setProdDatasheetUrl(res.url);
+            showToast('PDF Datasheet uploaded successfully!');
+          } else if (type === 'video') {
+            setProdVideoUrl(res.url);
+            showToast('Video uploaded successfully!');
+          } else if (type === 'additional-image') {
+            setProdAdditionalImages(prev => [...prev, res.url]);
+            showToast('Additional image added successfully!');
+          }
+        }
+      } catch (err) {
+        console.error('Error uploading file:', err);
+        showToast('Failed to upload file.', false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // ----------------------------------------------------
   // SUBMISSIONS & ACTIONS
   // ----------------------------------------------------
@@ -366,6 +410,9 @@ export const AdminPanel: React.FC = () => {
           setProdEnabled(p.enabled !== false);
           setProdDiscountPercent(p.discountPercent !== undefined && p.discountPercent !== null ? p.discountPercent.toString() : '');
           setProdDiscountAmount(p.discountAmount !== undefined && p.discountAmount !== null ? p.discountAmount.toString() : '');
+          setProdAdditionalImages(p.images || []);
+          setProdDatasheetUrl(p.datasheetUrl || '');
+          setProdVideoUrl(p.videoUrl || '');
         }
       } else {
         setProdNameEn('');
@@ -380,6 +427,9 @@ export const AdminPanel: React.FC = () => {
         setProdEnabled(true);
         setProdDiscountPercent('');
         setProdDiscountAmount('');
+        setProdAdditionalImages([]);
+        setProdDatasheetUrl('');
+        setProdVideoUrl('');
       }
     } 
     else if (type === 'category') {
@@ -483,6 +533,9 @@ export const AdminPanel: React.FC = () => {
           enabled: prodEnabled,
           discountPercent: prodDiscountPercent,
           discountAmount: prodDiscountAmount,
+          datasheetUrl: prodDatasheetUrl,
+          videoUrl: prodVideoUrl,
+          images: prodAdditionalImages,
         };
 
         if (editingId) {
@@ -950,7 +1003,7 @@ export const AdminPanel: React.FC = () => {
           {/* PRODUCTS LIST */}
           {adminSubTab === 'products' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[900px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">Image</th>
@@ -1038,7 +1091,7 @@ export const AdminPanel: React.FC = () => {
           {/* CATEGORIES LIST */}
           {adminSubTab === 'categories' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[800px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">ID</th>
@@ -1083,7 +1136,7 @@ export const AdminPanel: React.FC = () => {
           {/* ORDERS LIST */}
           {adminSubTab === 'orders' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[1000px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">Order ID</th>
@@ -1135,11 +1188,10 @@ export const AdminPanel: React.FC = () => {
           {/* ADMIN STAFF / USER MANAGEMENT LIST */}
           {adminSubTab === 'admin-users' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[800px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">{language === 'ar' ? 'المستخدم' : 'User Member'}</th>
-                    <th className="py-3.5 px-5">{language === 'ar' ? 'مضاعف السعر' : 'Price Multiplier'}</th>
                     <th className="py-3.5 px-5">{language === 'ar' ? 'الصلاحيات / التفاصيل' : 'Permissions & Overrides'}</th>
                     <th className="py-3.5 px-5 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                   </tr>
@@ -1169,11 +1221,6 @@ export const AdminPanel: React.FC = () => {
                             <p className="text-[10px] text-gray-400 font-medium font-mono">{language === 'ar' ? 'انضم في: ' : 'Joined: '}{new Date(u.createdAt).toLocaleDateString()}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="py-4 px-5">
-                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold font-mono ${!u.priceMultiplier || u.priceMultiplier === 1 ? 'bg-gray-100 text-gray-600' : u.priceMultiplier < 1 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
-                          {u.priceMultiplier !== undefined ? `${u.priceMultiplier}x` : '1.0x'}
-                        </span>
                       </td>
                       <td className="py-4 px-5">
                         <div className="flex flex-wrap gap-1 max-w-md">
@@ -1258,7 +1305,7 @@ export const AdminPanel: React.FC = () => {
           {/* SITE USERS / CUSTOMER PROFILE AUDIT LIST */}
           {adminSubTab === 'customers' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[700px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">Customer Detail</th>
@@ -1332,7 +1379,7 @@ export const AdminPanel: React.FC = () => {
           {/* ACTIVITY LOGS LIST */}
           {adminSubTab === 'activity-logs' && (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full min-w-[1100px] text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                     <th className="py-3.5 px-5">{language === 'ar' ? 'التاريخ والوقت' : 'Timestamp'}</th>
@@ -1667,8 +1714,8 @@ export const AdminPanel: React.FC = () => {
               {/* Backups List Grid Tab */}
               {activeBackupTab === 'backups' && (
                 <div className="space-y-3 text-left">
-                  <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
-                    <table className="w-full text-left border-collapse">
+                  <div className="border border-gray-100 rounded-2xl overflow-x-auto bg-white shadow-sm">
+                    <table className="w-full min-w-[900px] text-left border-collapse">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                           <th className="py-3 px-4">{language === 'ar' ? 'اسم ملف النسخة الاحتياطية والوصف' : 'Backup File Name & Description'}</th>
@@ -1801,8 +1848,8 @@ export const AdminPanel: React.FC = () => {
               {/* Restores List Grid Tab */}
               {activeBackupTab === 'restored' && (
                 <div className="space-y-3 text-left">
-                  <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
-                    <table className="w-full text-left border-collapse">
+                  <div className="border border-gray-100 rounded-2xl overflow-x-auto bg-white shadow-sm">
+                    <table className="w-full min-w-[900px] text-left border-collapse">
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
                           <th className="py-3 px-4">{language === 'ar' ? 'الحدث وتفاصيل استعادة قاعدة البيانات' : 'Database Restore Event & Details'}</th>
@@ -2103,6 +2150,100 @@ export const AdminPanel: React.FC = () => {
                       <span className="text-gray-800">Enabled (Visible in store by default)</span>
                     </label>
                   </div>
+
+                  {/* Additional Images Section */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <label className="block text-xs font-bold text-gray-700">Additional Images</label>
+                    {prodAdditionalImages.length > 0 && (
+                      <div className="flex flex-wrap gap-2.5 pb-2">
+                        {prodAdditionalImages.map((imgUrl, index) => (
+                          <div key={index} className="relative w-16 h-16 group/img border rounded-lg overflow-hidden">
+                            <img src={imgUrl} alt={`Additional ${index}`} className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setProdAdditionalImages(prev => prev.filter((_, idx) => idx !== index))}
+                              className="absolute inset-0 bg-red-600/80 text-white flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition duration-150 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleGenericFileUpload(e, 'additional-image')}
+                        className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                      <p className="text-[10px] text-gray-400">Upload multiple additional images for the product carousel</p>
+                    </div>
+                  </div>
+
+                  {/* Datasheets (PDF only) */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <label className="block text-xs font-bold text-gray-700">Product Datasheet (PDF Only)</label>
+                    {prodDatasheetUrl && (
+                      <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 p-2 rounded-xl border border-emerald-100 text-xs">
+                        <span className="font-semibold truncate flex-1">{prodDatasheetUrl}</span>
+                        <button
+                          type="button"
+                          onClick={() => setProdDatasheetUrl('')}
+                          className="text-rose-600 hover:text-rose-800 cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5">
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        onChange={(e) => handleGenericFileUpload(e, 'pdf')}
+                        className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                      <input
+                        type="text"
+                        value={prodDatasheetUrl}
+                        onChange={(e) => setProdDatasheetUrl(e.target.value)}
+                        placeholder="Or paste custom PDF url..."
+                        className="w-full border rounded-lg p-2 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Video URL or Upload */}
+                  <div className="space-y-2 pt-2 border-t">
+                    <label className="block text-xs font-bold text-gray-700">Product Video Link / Upload</label>
+                    {prodVideoUrl && (
+                      <div className="flex items-center gap-2 bg-blue-50 text-blue-800 p-2 rounded-xl border border-blue-100 text-xs">
+                        <span className="font-semibold truncate flex-1">{prodVideoUrl}</span>
+                        <button
+                          type="button"
+                          onClick={() => setProdVideoUrl('')}
+                          className="text-rose-600 hover:text-rose-800 cursor-pointer"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1.5">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => handleGenericFileUpload(e, 'video')}
+                        className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                      />
+                      <input
+                        type="text"
+                        value={prodVideoUrl}
+                        onChange={(e) => setProdVideoUrl(e.target.value)}
+                        placeholder="Or paste video Link (YouTube, Vimeo, MP4)..."
+                        className="w-full border rounded-lg p-2 text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -2179,27 +2320,7 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-200">
-                    <div className="space-y-1">
-                      <label className="block font-bold text-slate-700">
-                        {language === 'ar' ? 'مضاعف السعر (معامل ضرب السعر للعميل)' : 'Custom Price Multiplier'}
-                      </label>
-                      <input
-                        id="staff-price-multiplier-input"
-                        type="number"
-                        step="0.01"
-                        min="0.1"
-                        max="10"
-                        placeholder="e.g. 1.0"
-                        value={staffPriceMultiplier}
-                        onChange={e => setStaffPriceMultiplier(e.target.value)}
-                        className="w-full border rounded-lg p-2 text-xs font-mono font-bold bg-white"
-                      />
-                      <p className="text-[10px] text-gray-400">
-                        {language === 'ar' ? '1.0 تعني السعر العادي. أقل من 1.0 تعني خصم (مثل 0.9 = خصم 10%). أكثر من 1.0 تعني زيادة.' : '1.0 is standard. < 1.0 is discount (e.g. 0.90 is 10% off). > 1.0 is markup (e.g. 1.15 is 15% markup).'}
-                      </p>
-                    </div>
-
+                  <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200">
                     <div className="flex flex-col justify-center space-y-2">
                       <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
                         <input

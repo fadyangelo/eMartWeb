@@ -19,6 +19,8 @@ export const CartPage: React.FC = () => {
     getProductPrice
   } = useApp();
 
+  const curr = settings?.currency || 'USD';
+
   // Shipping form state
   const [shippingCities, setShippingCities] = useState<any[]>([]);
   const [selectedCityId, setSelectedCityId] = useState('');
@@ -132,8 +134,8 @@ export const CartPage: React.FC = () => {
       const cityObj = shippingCities.find(c => c.id === selectedCityId);
       const cityName = cityObj ? (language === 'ar' ? cityObj.nameAr : cityObj.nameEn) : city;
       setErrorMsg(language === 'ar' 
-        ? `الحد الأدنى لقيمة الطلب لتفعيل التوصيل إلى ${cityName} هو ${minOrder} ج.م` 
-        : `Minimum order amount for shipping to ${cityName} is ${minOrder} EGP.`
+        ? `الحد الأدنى لقيمة الطلب لتفعيل التوصيل إلى ${cityName} هو ${minOrder} ${curr}` 
+        : `Minimum order amount for shipping to ${cityName} is ${minOrder} ${curr}.`
       );
       return;
     }
@@ -435,7 +437,7 @@ export const CartPage: React.FC = () => {
                 >
                   {shippingCities.map(c => (
                     <option key={c.id} value={c.id}>
-                      {language === 'ar' ? c.nameAr : c.nameEn} ({c.defaultShippingFee} EGP)
+                      {language === 'ar' ? c.nameAr : c.nameEn} ({c.defaultShippingFee} {curr})
                     </option>
                   ))}
                 </select>
