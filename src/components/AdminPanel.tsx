@@ -1,12 +1,35 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product, Category, Order, User, OrderStatus, ActivityLog, BackupFile } from '../types';
+import { Product, Category, Order, User, OrderStatus, ActivityLog, BackupFile, RestoreEvent } from '../types';
 import { 
   Plus, Edit2, Trash2, Shield, UserCheck, Calendar, DollarSign, 
   Search, SlidersHorizontal, ChevronLeft, ChevronRight, CheckSquare, 
   X, RefreshCw, Eye, ArrowRight, User as UserIcon, Lock,
-  History, Database, Download, Upload, AlertCircle, ToggleLeft, ToggleRight
+  History, Database, Download, Upload, AlertCircle, ToggleLeft, ToggleRight,
+  ChevronDown
 } from 'lucide-react';
+
+const getDeviceName = (userAgent: string): string => {
+  if (!userAgent) return 'Unknown Device';
+  const ua = userAgent.toLowerCase();
+  
+  let os = 'Unknown OS';
+  if (ua.includes('windows')) os = 'Windows';
+  else if (ua.includes('macintosh') || ua.includes('mac os')) os = 'macOS';
+  else if (ua.includes('iphone')) os = 'iPhone';
+  else if (ua.includes('ipad')) os = 'iPad';
+  else if (ua.includes('android')) os = 'Android';
+  else if (ua.includes('linux')) os = 'Linux';
+  
+  let browser = 'Unknown Browser';
+  if (ua.includes('firefox')) browser = 'Firefox';
+  else if (ua.includes('chrome') && !ua.includes('chromium')) browser = 'Chrome';
+  else if (ua.includes('safari') && !ua.includes('chrome')) browser = 'Safari';
+  else if (ua.includes('edge') || ua.includes('edg/')) browser = 'Edge';
+  else if (ua.includes('opera') || ua.includes('opr/')) browser = 'Opera';
+  
+  return `${browser} on ${os}`;
+};
 
 export const AdminPanel: React.FC = () => {
   const { language, adminSubTab, setAdminSubTab, t, apiFetch, user, settings, fetchSettings, token } = useApp();
@@ -18,6 +41,45 @@ export const AdminPanel: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [backupsList, setBackupsList] = useState<BackupFile[]>([]);
+  const [restoresList, setRestoresList] = useState<RestoreEvent[]>([]);
+
+  // Backup-Restore Specific States
+  const [activeBackupTab, setActiveBackupTab] = useState<'backups' | 'restored'>('backups');
+  const [isDraggingBackup, setIsDraggingBackup] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+  const [processingItem, setProcessingItem] = useState<{
+    filename: string;
+    action: 'restore' | 'download' | 'delete' | 'upload' | null;
+  }>({ filename: '', action: null });
+  const [expandedLogIds, setExpandedLogIds] = useState<Record<string, boolean>>({});
+  const [backupSearch, setBackupSearch] = useState('');
+  const [backupCreatorFilter, setBackupCreatorFilter] = useState('All');
+  const [backupTypeFilter, setBackupTypeFilter] = useState('All');
+  const [backupDateFrom, setBackupDateFrom] = useState('');
+  const [backupDateTo, setBackupDateTo] = useState('');
+  const [backupSortOption, setBackupSortOption] = useState('newest');
+  const [backupsPage, setBackupsPage] = useState(1);
+  const [restoresPage, setRestoresPage] = useState(1);
+  const [totalPagesBackups, setTotalPagesBackups] = useState(1);
+  const [totalPagesRestores, setTotalPagesRestores] = useState(1);
+  const [totalBackupsCount, setTotalBackupsCount] = useState(0);
+  const [filteredBackupsCount, setFilteredBackupsCount] = useState(0);
+  const [totalRestoresCount, setTotalRestoresCount] = useState(0);
+  const [filteredRestoresCount, setFilteredRestoresCount] = useState(0);
+  const [uniqueBackupUsers, setUniqueBackupUsers] = useState<Array<{ email: string, name: string }>>([]);
+  const [uniqueRestoreUsers, setUniqueRestoreUsers] = useState<Array<{ email: string, name: string }>>([]);
+  const [showCreateBackupModal, setShowCreateBackupModal] = useState(false);
+  const [newBackupDescription, setNewBackupDescription] = useState('');
 
   // Filtering & Pagination
   const [search, setSearch] = useState('');
@@ -178,15 +240,47 @@ export const AdminPanel: React.FC = () => {
         setPage(res.pagination.currentPage || 1);
       }
       else if (adminSubTab === 'backup-restore') {
+        // Fetch Backups
         const queryBackups = new URLSearchParams({
-          search,
-          page: page.toString(),
+          search: backupSearch,
+          page: backupsPage.toString(),
           limit: '5',
+          createdBy: backupCreatorFilter,
+          backupType: backupTypeFilter,
+          dateFrom: backupDateFrom,
+          dateTo: backupDateTo,
+          sort: backupSortOption,
         });
-        const res = await apiFetch(`/api/admin/backups?${queryBackups.toString()}`);
-        setBackupsList(res.backups || []);
-        setTotalPages(res.pagination.totalPages || 1);
-        setPage(res.pagination.currentPage || 1);
+        const resBackups = await apiFetch(`/api/admin/backups?${queryBackups.toString()}`);
+        setBackupsList(resBackups.backups || []);
+        setTotalPagesBackups(resBackups.pagination.totalPages || 1);
+        setFilteredBackupsCount(resBackups.pagination.totalItems || 0);
+        setUniqueBackupUsers(resBackups.uniqueUsers || []);
+
+        // Fetch Restores
+        const queryRestores = new URLSearchParams({
+          search: backupSearch,
+          page: restoresPage.toString(),
+          limit: '5',
+          createdBy: backupCreatorFilter,
+          dateFrom: backupDateFrom,
+          dateTo: backupDateTo,
+          sort: backupSortOption,
+        });
+        const resRestores = await apiFetch(`/api/admin/restores?${queryRestores.toString()}`);
+        setRestoresList(resRestores.restores || []);
+        setTotalPagesRestores(resRestores.pagination.totalPages || 1);
+        setFilteredRestoresCount(resRestores.pagination.totalItems || 0);
+        setUniqueRestoreUsers(resRestores.uniqueUsers || []);
+
+        // Fetch total counts
+        const totalQueryBackups = new URLSearchParams({ limit: '1' });
+        const totalResBackups = await apiFetch(`/api/admin/backups?${totalQueryBackups.toString()}`);
+        setTotalBackupsCount(totalResBackups.pagination.totalItems || 0);
+
+        const totalQueryRestores = new URLSearchParams({ limit: '1' });
+        const totalResRestores = await apiFetch(`/api/admin/restores?${totalQueryRestores.toString()}`);
+        setTotalRestoresCount(totalResRestores.pagination.totalItems || 0);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to load data');
@@ -197,7 +291,10 @@ export const AdminPanel: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [adminSubTab, search, filterOption, page]);
+  }, [
+    adminSubTab, search, filterOption, page,
+    backupSearch, backupCreatorFilter, backupTypeFilter, backupDateFrom, backupDateTo, backupSortOption, backupsPage, restoresPage
+  ]);
 
   // Reset filter & search on tab shift
   useEffect(() => {
@@ -452,16 +549,40 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  // Custom Confirmation Modal Helper
+  const showConfirm = (title: string, message: string, onConfirm: () => void | Promise<void>) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await onConfirm();
+        } catch (err: any) {
+          console.error('Confirmation action failed:', err);
+        }
+      }
+    });
+  };
+
   // Delete Action
   const handleDelete = async (id: string, type: 'products' | 'categories') => {
-    if (!window.confirm(`Are you sure you want to delete this ${type.slice(0, -1)}?`)) return;
-    try {
-      await apiFetch(`/api/${type}/${id}`, { method: 'DELETE' });
-      showToast('Item deleted successfully!');
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete item', false);
-    }
+    const itemType = type.slice(0, -1);
+    const title = language === 'ar' ? 'تأكيد الحذف' : 'Confirm Deletion';
+    const message = language === 'ar' 
+      ? `هل أنت متأكد من رغبتك في حذف هذا الـ ${itemType === 'product' ? 'منتج' : 'فئة'}؟` 
+      : `Are you sure you want to delete this ${itemType}?`;
+
+    showConfirm(title, message, async () => {
+      try {
+        await apiFetch(`/api/${type}/${id}`, { method: 'DELETE' });
+        showToast(language === 'ar' ? 'تم حذف العنصر بنجاح!' : 'Item deleted successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.message || 'Failed to delete item', false);
+      }
+    });
   };
 
   // Change Status of Order
@@ -481,17 +602,23 @@ export const AdminPanel: React.FC = () => {
 
   // Issue Order Refund
   const handleIssueRefund = async (orderId: string) => {
-    if (!window.confirm('Are you sure you want to issue a full refund for this order? This will restock the inventory automatically.')) return;
-    try {
-      const updated = await apiFetch(`/api/orders/${orderId}/refund`, {
-        method: 'POST',
-      });
-      setSelectedOrder(updated);
-      showToast('Refund processed successfully!');
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Refund failed', false);
-    }
+    const title = language === 'ar' ? 'تأكيد استرداد الأموال' : 'Confirm Refund';
+    const message = language === 'ar' 
+      ? 'هل أنت متأكد من رغبتك في استرداد كامل المبلغ لهذا الطلب؟ سيتم إرجاع المنتجات إلى المخزون تلقائياً.' 
+      : 'Are you sure you want to issue a full refund for this order? This will restock the inventory automatically.';
+
+    showConfirm(title, message, async () => {
+      try {
+        const updated = await apiFetch(`/api/orders/${orderId}/refund`, {
+          method: 'POST',
+        });
+        setSelectedOrder(updated);
+        showToast(language === 'ar' ? 'تمت عملية الاسترداد بنجاح!' : 'Refund processed successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.message || 'Refund failed', false);
+      }
+    });
   };
 
   // View Customer's Orders History Drawer
@@ -506,12 +633,12 @@ export const AdminPanel: React.FC = () => {
   };
 
   // Backup and Restore Actions
-  const handleCreateBackup = async () => {
+  const handleCreateBackup = async (description = '') => {
     try {
       setActionLoading(true);
       await apiFetch('/api/admin/backups', {
         method: 'POST',
-        body: JSON.stringify({ isAutomatic: false }),
+        body: JSON.stringify({ isAutomatic: false, description }),
       });
       showToast(language === 'ar' ? 'تم إنشاء نسخة احتياطية بنجاح' : 'Backup file created successfully!');
       fetchData();
@@ -523,40 +650,80 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleRestoreBackup = async (filename: string) => {
-    if (!window.confirm(language === 'ar' ? `هل أنت متأكد من استعادة النسخة الاحتياطية "${filename}"؟ سيؤدي ذلك لاستبدال قاعدة البيانات الحالية.` : `Are you sure you want to restore "${filename}"? This will completely overwrite the active database.`)) return;
-    try {
-      setActionLoading(true);
-      await apiFetch('/api/admin/backups/restore', {
-        method: 'POST',
-        body: JSON.stringify({ filename }),
-      });
-      showToast(language === 'ar' ? 'تمت استعادة البيانات بنجاح' : 'Database restored successfully!');
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Restore failed', false);
-    } finally {
-      setActionLoading(false);
-    }
+    const title = language === 'ar' ? 'استعادة قاعدة البيانات' : 'Restore Database';
+    const message = language === 'ar' 
+      ? `هل أنت متأكد من استعادة النسخة الاحتياطية "${filename}"؟ سيؤدي ذلك لاستبدال قاعدة البيانات الحالية بالكامل.` 
+      : `Are you sure you want to restore "${filename}"? This will completely overwrite the active database.`;
+
+    showConfirm(title, message, async () => {
+      try {
+        setActionLoading(true);
+        setProcessingItem({ filename, action: 'restore' });
+        await apiFetch('/api/admin/backups/restore', {
+          method: 'POST',
+          body: JSON.stringify({ filename }),
+        });
+        showToast(language === 'ar' ? 'تمت استعادة البيانات بنجاح' : 'Database restored successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.message || 'Restore failed', false);
+      } finally {
+        setActionLoading(false);
+        setProcessingItem({ filename: '', action: null });
+      }
+    });
   };
 
   const handleDeleteBackup = async (filename: string) => {
-    if (!window.confirm(language === 'ar' ? `هل أنت متأكد من حذف ملف النسخة الاحتياطية "${filename}"؟` : `Are you sure you want to delete backup file "${filename}"?`)) return;
-    try {
-      setActionLoading(true);
-      await apiFetch(`/api/admin/backups/${filename}`, {
-        method: 'DELETE',
-      });
-      showToast(language === 'ar' ? 'تم حذف الملف بنجاح' : 'Backup file deleted successfully!');
-      fetchData();
-    } catch (err: any) {
-      showToast(err.message || 'Delete failed', false);
-    } finally {
-      setActionLoading(false);
-    }
+    const title = language === 'ar' ? 'حذف نسخة احتياطية' : 'Delete Backup';
+    const message = language === 'ar' 
+      ? `هل أنت متأكد من حذف ملف النسخة الاحتياطية "${filename}"؟` 
+      : `Are you sure you want to delete backup file "${filename}"?`;
+
+    showConfirm(title, message, async () => {
+      try {
+        setActionLoading(true);
+        setProcessingItem({ filename, action: 'delete' });
+        await apiFetch(`/api/admin/backups/${filename}`, {
+          method: 'DELETE',
+        });
+        showToast(language === 'ar' ? 'تم حذف الملف بنجاح' : 'Backup file deleted successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.message || 'Delete failed', false);
+      } finally {
+        setActionLoading(false);
+        setProcessingItem({ filename: '', action: null });
+      }
+    });
+  };
+
+  const handleDeleteRestore = async (id: string) => {
+    const title = language === 'ar' ? 'حذف سجل الاستعادة' : 'Delete Restore Record';
+    const message = language === 'ar' 
+      ? 'هل أنت متأكد من حذف سجل عملية الاستعادة هذه؟' 
+      : 'Are you sure you want to delete this restore history record?';
+
+    showConfirm(title, message, async () => {
+      try {
+        setActionLoading(true);
+        await apiFetch(`/api/admin/restores/${id}`, {
+          method: 'DELETE',
+        });
+        showToast(language === 'ar' ? 'تم حذف سجل الاستعادة بنجاح' : 'Restore record deleted successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(err.message || 'Delete failed', false);
+      } finally {
+        setActionLoading(false);
+      }
+    });
   };
 
   const handleDownloadBackup = async (filename: string) => {
     try {
+      setActionLoading(true);
+      setProcessingItem({ filename, action: 'download' });
       const res = await fetch(`/api/admin/backups/download/${filename}`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -573,6 +740,9 @@ export const AdminPanel: React.FC = () => {
       a.remove();
     } catch (err: any) {
       showToast(err.message || 'Download failed', false);
+    } finally {
+      setActionLoading(false);
+      setProcessingItem({ filename: '', action: null });
     }
   };
 
@@ -580,27 +750,43 @@ export const AdminPanel: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        setActionLoading(true);
-        const content = reader.result as string;
-        // Validate JSON syntax locally
-        JSON.parse(content);
-        
-        await apiFetch('/api/admin/backups/upload', {
-          method: 'POST',
-          body: JSON.stringify({ filename: file.name, content }),
-        });
-        showToast(language === 'ar' ? 'تم رفع نسخة احتياطية واستيرادها بنجاح' : 'Backup file uploaded and registered successfully!');
-        fetchData();
-      } catch (err: any) {
-        showToast(language === 'ar' ? 'ملف JSON غير صالح أو خطأ بالرفع' : `Invalid JSON structure or upload error: ${err.message}`, false);
-      } finally {
-        setActionLoading(false);
-      }
-    };
-    reader.readAsText(file);
+    const title = language === 'ar' ? 'تأكيد استعادة قاعدة البيانات' : 'Confirm Database Restore';
+    const confirmMessage = language === 'ar' 
+      ? `هل أنت متأكد من استعادة قاعدة البيانات من ملف النسخة الاحتياطية "${file.name}"؟ سيؤدي ذلك لاستبدال قاعدة البيانات الحالية بالكامل.`
+      : `Are you sure you want to restore the database from "${file.name}"? This will completely overwrite the active database.`;
+
+    showConfirm(title, confirmMessage, async () => {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          setActionLoading(true);
+          setProcessingItem({ filename: file.name, action: 'upload' });
+          const content = reader.result as string;
+          // Validate JSON syntax locally
+          const parsed = JSON.parse(content);
+          
+          // Basic validation of keys
+          if (!parsed.users || !parsed.products || !parsed.settings) {
+            throw new Error(language === 'ar' ? 'بنية الملف غير صالحة. يجب أن يحتوي على الجداول الرئيسية.' : 'Invalid file structure. Missing key tables (users, products, settings).');
+          }
+          
+          await apiFetch('/api/admin/backups/upload', {
+            method: 'POST',
+            body: JSON.stringify({ filename: file.name, content, restore: true }),
+          });
+          showToast(language === 'ar' ? 'تم استيراد واستعادة قاعدة البيانات بنجاح' : 'Backup file uploaded and database restored successfully!');
+          fetchData();
+        } catch (err: any) {
+          showToast(language === 'ar' ? 'ملف JSON غير صالح أو خطأ بالرفع: ' + err.message : `Invalid JSON structure or upload error: ${err.message}`, false);
+        } finally {
+          setActionLoading(false);
+          setProcessingItem({ filename: '', action: null });
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    e.target.value = ''; // Reset input
   };
 
   const getStatusColor = (status: OrderStatus) => {
@@ -922,7 +1108,7 @@ export const AdminPanel: React.FC = () => {
                       <td className="py-4 px-5 text-xs text-gray-400 font-semibold">
                         {new Date(o.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-4 px-5 font-extrabold text-gray-900">${o.totalAmount.toFixed(2)}</td>
+                      <td className="py-4 px-5 font-extrabold text-gray-900">{o.totalAmount.toFixed(2)} {settings?.currency || 'USD'}</td>
                       <td className="py-4 px-5 text-xs font-bold text-gray-500 uppercase">{o.paymentMethod}</td>
                       <td className="py-4 px-5">
                         <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${getStatusColor(o.status)}`}>
@@ -1188,10 +1374,22 @@ export const AdminPanel: React.FC = () => {
                           {log.details}
                         </td>
                         <td className="py-3 px-5">
-                          <div className="text-[10px] text-gray-400 space-y-0.5">
-                            <p><span className="font-bold">IP:</span> {log.ipAddress}</p>
-                            <p className="max-w-[200px] truncate" title={log.userAgent}><span className="font-bold">Agent:</span> {log.userAgent}</p>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedLogIds(prev => ({ ...prev, [log.id]: !prev[log.id] }))}
+                            className="flex items-center gap-1 px-2 py-1 bg-gray-50 hover:bg-gray-100 text-gray-500 hover:text-indigo-600 rounded-md font-bold transition text-[10px] cursor-pointer"
+                          >
+                            <span>{expandedLogIds[log.id] ? (language === 'ar' ? 'إخفاء البيانات' : 'Hide Device') : (language === 'ar' ? 'عرض البيانات' : 'Show Device')}</span>
+                            <ChevronDown size={11} className={`transition-transform duration-200 ${expandedLogIds[log.id] ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          {expandedLogIds[log.id] && (
+                            <div className="mt-2 p-2 bg-slate-50 border border-slate-100 rounded-lg text-[10px] text-gray-500 space-y-1 font-medium">
+                              <p><span className="font-bold text-gray-700">IP:</span> {log.ipAddress || 'N/A'}</p>
+                              <p><span className="font-bold text-gray-700">{language === 'ar' ? 'الجهاز:' : 'Device:'}</span> {getDeviceName(log.userAgent || '')}</p>
+                              <p className="break-all max-w-[220px]"><span className="font-bold text-gray-700">UA:</span> {log.userAgent || 'N/A'}</p>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))
@@ -1222,7 +1420,10 @@ export const AdminPanel: React.FC = () => {
                   <div>
                     <button
                       id="create-manual-backup-btn"
-                      onClick={handleCreateBackup}
+                      onClick={() => {
+                        setNewBackupDescription('');
+                        setShowCreateBackupModal(true);
+                      }}
                       disabled={actionLoading}
                       className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
                     >
@@ -1233,7 +1434,35 @@ export const AdminPanel: React.FC = () => {
                 </div>
 
                 {/* Panel 2: Upload Backup File Card */}
-                <div className="bg-emerald-50/30 border border-emerald-100 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                <div 
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDraggingBackup(true);
+                  }}
+                  onDragLeave={() => {
+                    setIsDraggingBackup(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDraggingBackup(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && (file.type === "application/json" || file.name.endsWith(".json"))) {
+                      const mockEvent = {
+                        target: {
+                          files: [file]
+                        }
+                      } as unknown as React.ChangeEvent<HTMLInputElement>;
+                      handleUploadBackupFile(mockEvent);
+                    } else {
+                      showToast(language === 'ar' ? 'الرجاء سحب وإفلات ملف JSON صالح فقط' : 'Please drop a valid JSON backup file only', false);
+                    }
+                  }}
+                  className={`border p-5 rounded-2xl flex flex-col justify-between space-y-4 transition-all duration-200 ${
+                    isDraggingBackup 
+                      ? 'bg-emerald-100/50 border-dashed border-emerald-400 scale-[1.02] shadow-md' 
+                      : 'bg-emerald-50/30 border-emerald-100'
+                  }`}
+                >
                   <div>
                     <h3 className="text-sm font-extrabold text-emerald-800 flex items-center gap-2">
                       <Upload size={16} className="text-emerald-600" />
@@ -1260,93 +1489,470 @@ export const AdminPanel: React.FC = () => {
 
               </div>
 
-              {/* Backups Files Table */}
-              <div className="space-y-3 text-left">
-                <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
-                  {language === 'ar' ? 'ملفات النسخ الاحتياطية المتوفرة على السيرفر' : 'Available Server Backups'}
-                </h3>
-                
-                <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
-                        <th className="py-3 px-4">{language === 'ar' ? 'اسم الملف' : 'Backup File Name'}</th>
-                        <th className="py-3 px-4">{language === 'ar' ? 'الحجم' : 'File Size'}</th>
-                        <th className="py-3 px-4">{language === 'ar' ? 'النوع' : 'Type'}</th>
-                        <th className="py-3 px-4">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created At'}</th>
-                        <th className="py-3 px-4 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {backupsList.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="py-8 text-center text-gray-400 font-semibold">
-                            {language === 'ar' ? 'لا توجد نسخ احتياطية مسجلة حالياً' : 'No backups registered. Click "Create Backup Now" to generate one.'}
-                          </td>
-                        </tr>
-                      ) : (
-                        backupsList.map(bk => (
-                          <tr key={bk.filename} className="border-b border-gray-50 hover:bg-gray-50/20 transition text-xs text-gray-700">
-                            <td className="py-3 px-4 font-mono font-bold text-gray-900 truncate max-w-xs" title={bk.filename}>
-                              {bk.filename}
-                            </td>
-                            <td className="py-3 px-4 font-semibold font-mono text-gray-500">
-                              {bk.size !== undefined ? (bk.size / 1024).toFixed(2) + ' KB' : 'Unknown'}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${bk.isAutomatic ? 'bg-slate-100 text-slate-600 border' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}`}>
-                                {bk.isAutomatic ? (language === 'ar' ? 'تلقائي' : 'AUTOMATIC') : (language === 'ar' ? 'يدوي' : 'MANUAL')}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 font-medium text-gray-400">
-                              {new Date(bk.createdAt).toLocaleDateString()} {new Date(bk.createdAt).toLocaleTimeString()}
-                            </td>
-                            <td className="py-3 px-4 text-right">
-                              <div className="flex items-center justify-end gap-2">
-                                <button
-                                  id={`restore-bk-btn-${bk.filename.replace(/\./g, '-')}`}
-                                  onClick={() => handleRestoreBackup(bk.filename)}
-                                  disabled={actionLoading}
-                                  className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1.5 rounded-lg transition text-[10px] cursor-pointer"
-                                  title={language === 'ar' ? 'استعادة قاعدة البيانات' : 'Restore database state'}
-                                >
-                                  <RefreshCw size={11} className="animate-pulse" />
-                                  <span>{language === 'ar' ? 'استعادة' : 'Restore'}</span>
-                                </button>
-                                
-                                <button
-                                  id={`download-bk-btn-${bk.filename.replace(/\./g, '-')}`}
-                                  onClick={() => handleDownloadBackup(bk.filename)}
-                                  className="p-1.5 bg-gray-50 text-gray-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
-                                  title={language === 'ar' ? 'تحميل' : 'Download file'}
-                                >
-                                  <Download size={13} />
-                                </button>
+              {/* Grid Split Navigation with Counts */}
+              <div className="flex border-b border-gray-100">
+                <button
+                  id="tab-backups-list"
+                  onClick={() => {
+                    setActiveBackupTab('backups');
+                    setPage(1);
+                  }}
+                  className={`py-3 px-5 text-xs font-bold flex items-center gap-2 transition border-b-2 -mb-[2px] cursor-pointer ${
+                    activeBackupTab === 'backups'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <Database size={14} />
+                  <span>{language === 'ar' ? 'ملفات النسخ الاحتياطية' : 'Backup Files'}</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-indigo-50 text-indigo-700 font-extrabold font-mono">
+                    {filteredBackupsCount} / {totalBackupsCount}
+                  </span>
+                </button>
 
+                <button
+                  id="tab-restores-history"
+                  onClick={() => {
+                    setActiveBackupTab('restored');
+                    setPage(1);
+                  }}
+                  className={`py-3 px-5 text-xs font-bold flex items-center gap-2 transition border-b-2 -mb-[2px] cursor-pointer ${
+                    activeBackupTab === 'restored'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  <History size={14} />
+                  <span>{language === 'ar' ? 'تاريخ الاستعادة' : 'Restore History'}</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-50 text-emerald-700 font-extrabold font-mono">
+                    {filteredRestoresCount} / {totalRestoresCount}
+                  </span>
+                </button>
+              </div>
+
+              {/* Filters Bar (Universal styling) */}
+              <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-left">
+                {/* Search Input */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'ar' ? 'بحث' : 'Search'}</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder={language === 'ar' ? 'اسم الملف، الوصف...' : 'Filename, description...'}
+                      value={backupSearch}
+                      onChange={(e) => {
+                        setBackupSearch(e.target.value);
+                        setBackupsPage(1);
+                        setRestoresPage(1);
+                      }}
+                      className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Creator Filter */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'ar' ? 'بواسطة المستخدم' : 'Created By User'}</label>
+                  <select
+                    value={backupCreatorFilter}
+                    onChange={(e) => {
+                      setBackupCreatorFilter(e.target.value);
+                      setBackupsPage(1);
+                      setRestoresPage(1);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  >
+                    <option value="All">{language === 'ar' ? 'جميع المستخدمين' : 'All Users'}</option>
+                    {Array.from(new Set([
+                      ...uniqueBackupUsers.map(u => JSON.stringify(u)),
+                      ...uniqueRestoreUsers.map(u => JSON.stringify(u))
+                    ])).map(str => {
+                      const u = JSON.parse(str);
+                      return (
+                        <option key={u.email} value={u.email}>
+                          {u.name} ({u.email})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                {/* Backup Type Filter (Only active or sensible for Backups tab) */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'ar' ? 'نوع النسخة' : 'Backup Type'}</label>
+                  <select
+                    value={backupTypeFilter}
+                    disabled={activeBackupTab === 'restored'}
+                    onChange={(e) => {
+                      setBackupTypeFilter(e.target.value);
+                      setBackupsPage(1);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="All">{language === 'ar' ? 'جميع الأنواع' : 'All Types'}</option>
+                    <option value="MANUAL">{language === 'ar' ? 'يدوي' : 'MANUAL'}</option>
+                    <option value="AUTOMATIC">{language === 'ar' ? 'تلقائي' : 'AUTOMATIC'}</option>
+                  </select>
+                </div>
+
+                {/* Date From & Date To */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'ar' ? 'من تاريخ' : 'Date From'}</label>
+                  <input
+                    type="date"
+                    value={backupDateFrom}
+                    onChange={(e) => {
+                      setBackupDateFrom(e.target.value);
+                      setBackupsPage(1);
+                      setRestoresPage(1);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'ar' ? 'إلى تاريخ' : 'Date To'}</label>
+                  <input
+                    type="date"
+                    value={backupDateTo}
+                    onChange={(e) => {
+                      setBackupDateTo(e.target.value);
+                      setBackupsPage(1);
+                      setRestoresPage(1);
+                    }}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                  />
+                </div>
+
+                {/* Sort Option */}
+                <div className="sm:col-span-2 md:col-span-5 flex items-center justify-between gap-4 pt-2 border-t border-slate-200/60 mt-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400">{language === 'ar' ? 'ترتيب:' : 'Sort By:'}</span>
+                    <select
+                      value={backupSortOption}
+                      onChange={(e) => {
+                        setBackupSortOption(e.target.value);
+                        setBackupsPage(1);
+                        setRestoresPage(1);
+                      }}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-indigo-500 outline-none"
+                    >
+                      <option value="newest">{language === 'ar' ? 'الأحدث أولاً' : 'Newest First'}</option>
+                      <option value="oldest">{language === 'ar' ? 'الأقدم أولاً' : 'Oldest First'}</option>
+                      <option value="size_desc">{language === 'ar' ? 'الحجم: من الأكبر للأصغر' : 'File Size: Large to Small'}</option>
+                      <option value="size_asc">{language === 'ar' ? 'الحجم: من الأصغر للأكبر' : 'File Size: Small to Large'}</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setBackupSearch('');
+                      setBackupCreatorFilter('All');
+                      setBackupTypeFilter('All');
+                      setBackupDateFrom('');
+                      setBackupDateTo('');
+                      setBackupSortOption('newest');
+                      setBackupsPage(1);
+                      setRestoresPage(1);
+                    }}
+                    className="text-[11px] font-extrabold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <X size={12} />
+                    <span>{language === 'ar' ? 'إعادة ضبط الفلاتر' : 'Reset Filters'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Backups List Grid Tab */}
+              {activeBackupTab === 'backups' && (
+                <div className="space-y-3 text-left">
+                  <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
+                          <th className="py-3 px-4">{language === 'ar' ? 'اسم ملف النسخة الاحتياطية والوصف' : 'Backup File Name & Description'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'بواسطة' : 'Created By'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'الحجم' : 'File Size'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'النوع' : 'Type'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created At'}</th>
+                          <th className="py-3 px-4 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backupsList.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-gray-400 font-semibold">
+                              {language === 'ar' ? 'لا توجد نسخ احتياطية تطابق الفلاتر المحددة' : 'No backup files match the current filters.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          backupsList.map(bk => (
+                            <tr key={bk.filename} className="border-b border-gray-50 hover:bg-gray-50/20 transition text-xs text-gray-700">
+                              <td className="py-3.5 px-4 font-medium">
+                                <span className="font-mono font-bold text-gray-900 block truncate max-w-sm" title={bk.filename}>
+                                  {bk.filename}
+                                </span>
+                                {bk.description && (
+                                  <span className="text-[11px] text-gray-500 mt-0.5 block font-medium max-w-sm">
+                                    {bk.description}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-gray-800">{bk.createdByName || 'System'}</span>
+                                  <span className="text-[10px] text-gray-400 font-mono">{bk.createdByEmail || 'system@emart.com'}</span>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-semibold font-mono text-gray-500">
+                                {bk.size !== undefined ? (bk.size / 1024).toFixed(2) + ' KB' : 'Unknown'}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${bk.isAutomatic ? 'bg-slate-100 text-slate-600 border border-slate-200' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}`}>
+                                  {bk.isAutomatic ? (language === 'ar' ? 'تلقائي' : 'AUTOMATIC') : (language === 'ar' ? 'يدوي' : 'MANUAL')}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-medium text-gray-400">
+                                {new Date(bk.createdAt).toLocaleDateString()} {new Date(bk.createdAt).toLocaleTimeString()}
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    id={`restore-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                    onClick={() => handleRestoreBackup(bk.filename)}
+                                    disabled={actionLoading}
+                                    className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1.5 rounded-lg transition text-[10px] cursor-pointer"
+                                    title={language === 'ar' ? 'استعادة قاعدة البيانات' : 'Restore database state'}
+                                  >
+                                    {processingItem.filename === bk.filename && processingItem.action === 'restore' ? (
+                                      <RefreshCw size={11} className="animate-spin text-emerald-600" />
+                                    ) : (
+                                      <RefreshCw size={11} className="animate-pulse" />
+                                    )}
+                                    <span>
+                                      {processingItem.filename === bk.filename && processingItem.action === 'restore'
+                                        ? (language === 'ar' ? 'جاري الاستعادة...' : 'Restoring...')
+                                        : (language === 'ar' ? 'استعادة' : 'Restore')}
+                                    </span>
+                                  </button>
+                                  
+                                  <button
+                                    id={`download-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                    onClick={() => handleDownloadBackup(bk.filename)}
+                                    disabled={actionLoading}
+                                    className="p-1.5 bg-gray-50 text-gray-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer flex items-center justify-center min-w-[28px] min-h-[28px]"
+                                    title={language === 'ar' ? 'تحميل' : 'Download file'}
+                                  >
+                                    {processingItem.filename === bk.filename && processingItem.action === 'download' ? (
+                                      <RefreshCw size={13} className="animate-spin text-indigo-600" />
+                                    ) : (
+                                      <Download size={13} />
+                                    )}
+                                  </button>
+
+                                  <button
+                                    id={`delete-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                    onClick={() => handleDeleteBackup(bk.filename)}
+                                    disabled={actionLoading}
+                                    className="p-1.5 bg-gray-50 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer flex items-center justify-center min-w-[28px] min-h-[28px]"
+                                    title={language === 'ar' ? 'حذف' : 'Delete file'}
+                                  >
+                                    {processingItem.filename === bk.filename && processingItem.action === 'delete' ? (
+                                      <RefreshCw size={13} className="animate-spin text-red-500" />
+                                    ) : (
+                                      <Trash2 size={13} />
+                                    )}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Backups Pagination */}
+                  {!loading && totalPagesBackups > 1 && (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                      <button
+                        onClick={() => setBackupsPage(p => Math.max(1, p - 1))}
+                        disabled={backupsPage === 1}
+                        className="p-1.5 border rounded-lg hover:bg-gray-50 bg-white disabled:opacity-40 transition"
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                      <span className="text-xs font-bold text-slate-500">
+                        {language === 'ar' ? `صفحة ${backupsPage} من ${totalPagesBackups}` : `Page ${backupsPage} of ${totalPagesBackups}`}
+                      </span>
+                      <button
+                        onClick={() => setBackupsPage(p => Math.min(totalPagesBackups, p + 1))}
+                        disabled={backupsPage === totalPagesBackups}
+                        className="p-1.5 border rounded-lg hover:bg-gray-50 bg-white disabled:opacity-40 transition"
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Restores List Grid Tab */}
+              {activeBackupTab === 'restored' && (
+                <div className="space-y-3 text-left">
+                  <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white shadow-sm">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
+                          <th className="py-3 px-4">{language === 'ar' ? 'الحدث وتفاصيل استعادة قاعدة البيانات' : 'Database Restore Event & Details'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'بواسطة' : 'Restored By'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'الحجم الأصلي للنسخة' : 'Original Size'}</th>
+                          <th className="py-3 px-4">{language === 'ar' ? 'تاريخ الاستعادة والوقت' : 'Restored At'}</th>
+                          <th className="py-3 px-4 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {restoresList.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-8 text-center text-gray-400 font-semibold">
+                              {language === 'ar' ? 'لا يوجد تاريخ استعادة يطابق الفلاتر المحددة' : 'No database restore events match the current filters.'}
+                            </td>
+                          </tr>
+                        ) : (
+                          restoresList.map(restore => (
+                            <tr key={restore.id} className="border-b border-gray-50 hover:bg-gray-50/20 transition text-xs text-gray-700">
+                              <td className="py-3.5 px-4 font-medium">
+                                <span className="font-mono font-bold text-gray-900 block truncate max-w-sm" title={restore.filename}>
+                                  {restore.filename}
+                                </span>
+                                {restore.description && (
+                                  <span className="text-[11px] text-gray-500 mt-0.5 block font-medium max-w-sm">
+                                    {restore.description}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-gray-800">{restore.createdByName || 'System'}</span>
+                                  <span className="text-[10px] text-gray-400 font-mono">{restore.createdByEmail || 'system@emart.com'}</span>
+                                </div>
+                              </td>
+                              <td className="py-3.5 px-4 font-semibold font-mono text-gray-500">
+                                {restore.size !== undefined ? (restore.size / 1024).toFixed(2) + ' KB' : 'Unknown'}
+                              </td>
+                              <td className="py-3.5 px-4 font-medium text-gray-400">
+                                {new Date(restore.createdAt).toLocaleDateString()} {new Date(restore.createdAt).toLocaleTimeString()}
+                              </td>
+                              <td className="py-3.5 px-4 text-right">
                                 <button
-                                  id={`delete-bk-btn-${bk.filename.replace(/\./g, '-')}`}
-                                  onClick={() => handleDeleteBackup(bk.filename)}
+                                  id={`delete-restore-btn-${restore.id}`}
+                                  onClick={() => handleDeleteRestore(restore.id)}
                                   disabled={actionLoading}
                                   className="p-1.5 bg-gray-50 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
-                                  title={language === 'ar' ? 'حذف' : 'Delete file'}
+                                  title={language === 'ar' ? 'حذف سجل الاستعادة' : 'Delete restore record'}
                                 >
                                   <Trash2 size={13} />
                                 </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Restores Pagination */}
+                  {!loading && totalPagesRestores > 1 && (
+                    <div className="flex items-center justify-center gap-2 py-4">
+                      <button
+                        onClick={() => setRestoresPage(p => Math.max(1, p - 1))}
+                        disabled={restoresPage === 1}
+                        className="p-1.5 border rounded-lg hover:bg-gray-50 bg-white disabled:opacity-40 transition"
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                      <span className="text-xs font-bold text-slate-500">
+                        {language === 'ar' ? `صفحة ${restoresPage} من ${totalPagesRestores}` : `Page ${restoresPage} of ${totalPagesRestores}`}
+                      </span>
+                      <button
+                        onClick={() => setRestoresPage(p => Math.min(totalPagesRestores, p + 1))}
+                        disabled={restoresPage === totalPagesRestores}
+                        className="p-1.5 border rounded-lg hover:bg-gray-50 bg-white disabled:opacity-40 transition"
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Create Backup Confirmation & Description Dialog Modal */}
+              {showCreateBackupModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+                  <div className="bg-white rounded-2xl border border-slate-100 max-w-md w-full p-6 text-left shadow-xl space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                        <Database size={16} className="text-indigo-600" />
+                        <span>{language === 'ar' ? 'تأكيد إنشاء نسخة احتياطية' : 'Create Database Backup'}</span>
+                      </h3>
+                      <button
+                        onClick={() => setShowCreateBackupModal(false)}
+                        className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                        {language === 'ar' 
+                          ? 'يمكنك إضافة وصف اختياري لمساعدتك في التعرف على هذه النسخة الاحتياطية لاحقاً.' 
+                          : 'You can optionally add a description below to help you identify this backup file later.'}
+                      </p>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          {language === 'ar' ? 'الوصف (اختياري)' : 'Description (Optional)'}
+                        </label>
+                        <textarea
+                          rows={3}
+                          placeholder={language === 'ar' ? 'أدخل تفاصيل النسخة الاحتياطية هنا...' : 'Enter details about what is in this backup...'}
+                          value={newBackupDescription}
+                          onChange={(e) => setNewBackupDescription(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                      <button
+                        onClick={() => setShowCreateBackupModal(false)}
+                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-500 text-xs font-bold rounded-xl transition cursor-pointer"
+                      >
+                        {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleCreateBackup(newBackupDescription);
+                          setShowCreateBackupModal(false);
+                        }}
+                        disabled={actionLoading}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center gap-1 cursor-pointer"
+                      >
+                        <Database size={13} />
+                        <span>{language === 'ar' ? 'إنشاء نسخة احتياطية' : 'Create Backup'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
             </div>
           )}
 
           {/* Table pagination */}
-          {!loading && totalPages > 1 && (
+          {!loading && adminSubTab !== 'backup-restore' && totalPages > 1 && (
             <div className="flex items-center justify-center gap-2 py-4 border-t border-gray-100 bg-gray-50/20">
               <button
                 id="admin-prev-btn"
@@ -1905,9 +2511,9 @@ export const AdminPanel: React.FC = () => {
                   <p className="text-xl font-black text-gray-800">{customerOrders.length}</p>
                 </div>
                 <div>
-                  <p className="text-gray-400 uppercase text-[10px] tracking-wider mb-0.5">Aggregate Spend ($)</p>
+                  <p className="text-gray-400 uppercase text-[10px] tracking-wider mb-0.5">Aggregate Spend ({settings?.currency || 'USD'})</p>
                   <p className="text-xl font-black text-emerald-600">
-                    ${customerOrders.reduce((sum, o) => o.status !== 'refunded' && o.status !== 'cancelled' ? sum + o.totalAmount : sum, 0).toFixed(2)}
+                    {customerOrders.reduce((sum, o) => o.status !== 'refunded' && o.status !== 'cancelled' ? sum + o.totalAmount : sum, 0).toFixed(2)} {settings?.currency || 'USD'}
                   </p>
                 </div>
               </div>
@@ -1925,7 +2531,7 @@ export const AdminPanel: React.FC = () => {
                         <p className="text-[10px] text-gray-500 font-medium">Items: {o.items.map(item => `${item.productNameEn} (x${item.quantity})`).join(', ')}</p>
                       </div>
                       <div className="text-right space-y-1">
-                        <p className="font-black text-gray-800">${o.totalAmount.toFixed(2)}</p>
+                        <p className="font-black text-gray-800">{o.totalAmount.toFixed(2)} {settings?.currency || 'USD'}</p>
                         <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${getStatusColor(o.status)}`}>
                           {o.status}
                         </span>
@@ -1933,6 +2539,42 @@ export const AdminPanel: React.FC = () => {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[9999] p-4 text-left">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden">
+            <div className="p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="p-2 bg-amber-50 text-amber-600 rounded-xl mt-0.5">
+                  <AlertCircle size={20} />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-base font-extrabold text-slate-800">{confirmModal.title}</h3>
+                  <p className="text-xs font-semibold text-slate-500 leading-relaxed">{confirmModal.message}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-800 font-extrabold rounded-xl transition text-xs cursor-pointer"
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmModal.onConfirm}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl transition text-xs shadow-md shadow-amber-600/10 cursor-pointer animate-pulse"
+                >
+                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
+                </button>
               </div>
             </div>
           </div>

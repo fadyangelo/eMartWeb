@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Category } from '../types';
 import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X } from 'lucide-react';
@@ -35,6 +35,54 @@ export const StoreFront: React.FC = () => {
   // Filters State
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+
+  // Autocomplete Suggestions State
+  const [suggestions, setSuggestions] = useState<Product[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Suggestions fetching logic (debounced)
+  useEffect(() => {
+    if (!search.trim()) {
+      setSuggestions([]);
+      return;
+    }
+    const delayDebounce = setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        const query = new URLSearchParams({
+          search: search,
+          limit: '5',
+        });
+        const data = await apiFetch(`/api/products?${query.toString()}`);
+        setSuggestions(data.products || []);
+      } catch (err) {
+        console.error('Error fetching suggestions:', err);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(delayDebounce);
+  }, [search]);
+
+  // Click outside listener
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Reset active suggestion index when suggestions change
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [suggestions]);
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   const [sort, setSort] = useState('popular');
@@ -187,19 +235,108 @@ export const StoreFront: React.FC = () => {
       {/* Search and Filters Bar */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-xs">
         {/* Search */}
-        <div className="relative w-full md:max-w-md">
+        <div ref={searchContainerRef} className="relative w-full md:max-w-md">
           <Search className={`absolute ${language === 'ar' ? 'right-3' : 'left-3'} top-1/2 -translate-y-1/2 text-gray-400`} size={18} />
           <input
             id="search-input"
             type="text"
             value={search}
+            onFocus={() => setShowSuggestions(true)}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setShowSuggestions(true);
+                setActiveIndex(prev => (prev < suggestions.length - 1 ? prev + 1 : prev));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setActiveIndex(prev => (prev > 0 ? prev - 1 : -1));
+              } else if (e.key === 'Enter') {
+                if (activeIndex >= 0 && suggestions[activeIndex]) {
+                  e.preventDefault();
+                  const selected = suggestions[activeIndex];
+                  setSelectedProduct(selected);
+                  setShowSuggestions(false);
+                }
+              } else if (e.key === 'Escape') {
+                setShowSuggestions(false);
+              }
+            }}
             onChange={e => {
               setSearch(e.target.value);
               setPage(1);
+              setShowSuggestions(true);
             }}
             placeholder={t('searchPlaceholder')}
             className={`w-full py-2.5 ${language === 'ar' ? 'pr-10 pl-4' : 'pl-10 pr-4'} text-sm bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden transition`}
           />
+
+          {/* Autocomplete Suggestions Dropdown */}
+          {showSuggestions && search.trim() && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-gray-200 rounded-2xl shadow-xl z-50 overflow-hidden max-h-72 overflow-y-auto scrollbar-none">
+              {suggestionsLoading && suggestions.length === 0 ? (
+                <div className="p-4 text-xs text-gray-400 text-center flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></span>
+                  {language === 'ar' ? 'جاري البحث...' : 'Searching...'}
+                </div>
+              ) : suggestions.length > 0 ? (
+                <div className="p-1.5 space-y-0.5">
+                  <div className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    {language === 'ar' ? 'المنتجات المقترحة' : 'Suggested Products'}
+                  </div>
+                  {suggestions.map((p, idx) => {
+                    const { final, hasDiscount, original } = getProductPrice(p);
+                    const curr = settings?.currency || 'USD';
+                    const isActive = idx === activeIndex;
+                    return (
+                      <div
+                        key={p.id}
+                        id={`autocomplete-item-${p.id}`}
+                        onClick={() => {
+                          setSelectedProduct(p);
+                          setShowSuggestions(false);
+                        }}
+                        onMouseEnter={() => setActiveIndex(idx)}
+                        className={`flex items-center justify-between p-2 rounded-xl transition duration-150 cursor-pointer ${
+                          isActive ? 'bg-emerald-50 text-emerald-900 font-medium' : 'hover:bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={p.imageUrl}
+                            alt={language === 'ar' ? p.nameAr : p.nameEn}
+                            referrerPolicy="no-referrer"
+                            className="w-10 h-10 object-cover rounded-lg bg-gray-50 border border-gray-100 shrink-0"
+                          />
+                          <div className="truncate">
+                            <p className="text-xs font-bold text-gray-800 truncate">
+                              {language === 'ar' ? p.nameAr : p.nameEn}
+                            </p>
+                            <p className="text-[10px] text-gray-400 truncate">
+                              {language === 'ar' ? p.descriptionAr : p.descriptionEn}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 pl-2 pr-2">
+                          <span className="text-xs font-extrabold text-emerald-600 font-mono">
+                            {final.toFixed(2)} {curr}
+                          </span>
+                          {hasDiscount && (
+                            <p className="text-[9px] text-gray-400 line-through font-mono">
+                              {original.toFixed(2)} {curr}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 text-xs text-gray-400 text-center">
+                  {language === 'ar' ? 'لا توجد نتائج مطابقة' : 'No matching results'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action Controls */}

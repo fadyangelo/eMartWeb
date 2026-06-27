@@ -43,6 +43,7 @@ export interface ActivityLog {
   timestamp: string;
   userEmail: string;
   userName: string;
+  userRole?: string;
   action: string;
   description: string;
   ipAddress?: string;
@@ -54,6 +55,19 @@ export interface BackupFile {
   size: number;
   createdAt: string;
   isAutomatic?: boolean;
+  description?: string;
+  createdByEmail?: string;
+  createdByName?: string;
+}
+
+export interface RestoreEvent {
+  id: string;
+  filename: string;
+  size?: number;
+  createdAt: string;
+  createdByEmail: string;
+  createdByName: string;
+  description?: string;
 }
 
 export interface Category {

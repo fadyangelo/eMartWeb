@@ -120,7 +120,7 @@ export const MyOrders: React.FC = () => {
                   })}
                 </div>
                 <div className="text-xs text-gray-500 font-medium">
-                  {order.items.length} {t('items')} &bull; <span className="font-bold text-gray-800">${order.totalAmount.toFixed(2)}</span>
+                  {order.items.length} {t('items')} &bull; <span className="font-bold text-gray-800">{order.totalAmount.toFixed(2)} {settings?.currency || 'USD'}</span>
                 </div>
               </div>
 

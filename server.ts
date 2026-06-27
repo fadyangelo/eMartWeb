@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { getDb, saveDb } from './server/db';
-import { User, Product, Category, Order, OrderStatus, StatusHistoryItem, SystemSettings, Transaction, BackupFile, ActivityLog, ShippingCity } from './src/types';
+import { User, Product, Category, Order, OrderStatus, StatusHistoryItem, SystemSettings, Transaction, BackupFile, ActivityLog, ShippingCity, RestoreEvent } from './src/types';
 import Stripe from 'stripe';
 
 const app = express();
@@ -87,18 +87,20 @@ const logActivity = (req: any, action: string, description: string) => {
   if (!db.activityLogs) {
     db.activityLogs = [];
   }
-  const user = req.user;
+  const user = req?.user;
   const userEmail = user ? user.email : 'system@emart.com';
   const userName = user ? user.name : 'System';
+  const userRole = user ? user.role : 'system';
   
-  const ipAddress = req.ip || req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '';
-  const userAgent = req.headers?.['user-agent'] || '';
+  const ipAddress = req?.ip || req?.headers?.['x-forwarded-for'] || req?.socket?.remoteAddress || '';
+  const userAgent = req?.headers?.['user-agent'] || '';
 
   const newLog = {
     id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     timestamp: new Date().toISOString(),
     userEmail,
     userName,
+    userRole,
     action,
     description,
     ipAddress: String(ipAddress),
@@ -174,6 +176,76 @@ app.post('/api/auth/signup', (req: Request, res: Response) => {
     token: newUser.id,
     user: newUser,
   });
+});
+
+// Verification codes store for password resets
+const verificationCodes = new Map<string, { code: string; expiresAt: number }>();
+
+app.post('/api/auth/forgot-password', (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required.' });
+  }
+
+  const db = getDb();
+  const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) {
+    return res.status(404).json({ message: 'Email address not found.' });
+  }
+
+  // Generate a 6-digit random code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  verificationCodes.set(email.toLowerCase(), {
+    code,
+    expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+  });
+
+  // Log action
+  logActivity({ user, ip: req.ip, headers: req.headers, socket: req.socket }, 'Forgot Password Requested', `Verification code generated for ${email}.`);
+
+  res.json({
+    message: 'Verification code generated successfully.',
+    code, // Returned directly so the client-side can display/use it easily
+  });
+});
+
+app.post('/api/auth/reset-password', (req: Request, res: Response) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ message: 'Email, verification code, and new password are required.' });
+  }
+
+  const record = verificationCodes.get(email.toLowerCase());
+  if (!record) {
+    return res.status(400).json({ message: 'No password reset request found for this email.' });
+  }
+
+  if (Date.now() > record.expiresAt) {
+    verificationCodes.delete(email.toLowerCase());
+    return res.status(400).json({ message: 'Verification code has expired.' });
+  }
+
+  if (record.code !== code) {
+    return res.status(400).json({ message: 'Invalid verification code.' });
+  }
+
+  const db = getDb();
+  const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) {
+    return res.status(404).json({ message: 'User not found.' });
+  }
+
+  // Update password
+  db.passwords[user.id] = newPassword;
+  saveDb(db);
+
+  // Clear code
+  verificationCodes.delete(email.toLowerCase());
+
+  // Log action
+  logActivity({ user, ip: req.ip, headers: req.headers, socket: req.socket }, 'Password Reset Completed', `Password successfully reset for ${email}.`);
+
+  res.json({ message: 'Password has been reset successfully.' });
 });
 
 // ----------------------------------------------------
@@ -1507,27 +1579,69 @@ app.get('/api/admin/backups', requireAdminOrManager, (req: Request, res: Respons
       .map(filename => {
         const filePath = path.join(BACKUPS_DIR, filename);
         const stats = fs.statSync(filePath);
-        // Match with metadata from DB to check if automatic
+        // Match with metadata from DB to check if automatic & other properties
         const meta = db.backups?.find(b => b.filename === filename);
         return {
           filename,
           size: stats.size,
-          createdAt: stats.mtime.toISOString(),
+          createdAt: meta ? meta.createdAt : stats.mtime.toISOString(),
           isAutomatic: meta ? meta.isAutomatic : filename.startsWith('auto_'),
+          description: meta?.description || '',
+          createdByEmail: meta?.createdByEmail || 'system@emart.com',
+          createdByName: meta?.createdByName || 'System',
         };
       });
   } catch (err) {
     console.error('Error reading backups directory:', err);
   }
 
-  // Sort by newest first
-  files.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Extract query filters
+  const search = (req.query.search as string || '').toLowerCase();
+  const createdBy = req.query.createdBy as string; // email filter
+  const backupType = req.query.backupType as string; // "All", "MANUAL", "AUTOMATIC"
+  const dateFrom = req.query.dateFrom as string; // date string
+  const dateTo = req.query.dateTo as string; // date string
+  const sort = req.query.sort as string || 'newest';
 
-  // Filter
-  const search = req.query.search as string;
+  // Apply filters
   if (search) {
-    const q = search.toLowerCase();
-    files = files.filter(f => f.filename.toLowerCase().includes(q));
+    files = files.filter(f => 
+      f.filename.toLowerCase().includes(search) || 
+      (f.description || '').toLowerCase().includes(search) ||
+      (f.createdByEmail || '').toLowerCase().includes(search) ||
+      (f.createdByName || '').toLowerCase().includes(search)
+    );
+  }
+
+  if (createdBy && createdBy !== 'All') {
+    files = files.filter(f => f.createdByEmail === createdBy);
+  }
+
+  if (backupType && backupType !== 'All') {
+    const isAuto = backupType === 'AUTOMATIC';
+    files = files.filter(f => f.isAutomatic === isAuto);
+  }
+
+  if (dateFrom) {
+    const fromTime = new Date(dateFrom).getTime();
+    files = files.filter(f => new Date(f.createdAt).getTime() >= fromTime);
+  }
+
+  if (dateTo) {
+    const toTime = new Date(dateTo).setHours(23, 59, 59, 999);
+    files = files.filter(f => new Date(f.createdAt).getTime() <= toTime);
+  }
+
+  // Sort
+  if (sort === 'oldest') {
+    files.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  } else if (sort === 'size_desc') {
+    files.sort((a, b) => b.size - a.size);
+  } else if (sort === 'size_asc') {
+    files.sort((a, b) => a.size - b.size);
+  } else {
+    // default: newest
+    files.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   // Pagination
@@ -1538,8 +1652,103 @@ app.get('/api/admin/backups', requireAdminOrManager, (req: Request, res: Respons
   const startIndex = (page - 1) * limit;
   const paginatedFiles = files.slice(startIndex, startIndex + limit);
 
+  // Get unique users for filter options
+  const db = getDb();
+  const allBackupUsers = Array.from(new Set((db.backups || []).map(b => b.createdByEmail).filter(Boolean)));
+  const uniqueUsers = allBackupUsers.map(email => {
+    const found = db.backups?.find(b => b.createdByEmail === email);
+    return {
+      email,
+      name: found?.createdByName || email
+    };
+  });
+
   res.json({
     backups: paginatedFiles,
+    uniqueUsers,
+    pagination: {
+      currentPage: page,
+      limit,
+      totalItems,
+      totalPages,
+    }
+  });
+});
+
+// List Restore events with Filters & paging
+app.get('/api/admin/restores', requireAdminOrManager, (req: Request, res: Response) => {
+  const user = (req as any).user as User;
+  if (user.role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden. Admin role required.' });
+  }
+
+  const db = getDb();
+  let restores: RestoreEvent[] = db.restores || [];
+
+  // Extract query filters
+  const search = (req.query.search as string || '').toLowerCase();
+  const createdBy = req.query.createdBy as string; // email filter
+  const dateFrom = req.query.dateFrom as string; // date string
+  const dateTo = req.query.dateTo as string; // date string
+  const sort = req.query.sort as string || 'newest';
+
+  // Apply filters
+  if (search) {
+    restores = restores.filter(r => 
+      r.filename.toLowerCase().includes(search) || 
+      (r.description || '').toLowerCase().includes(search) ||
+      (r.createdByEmail || '').toLowerCase().includes(search) ||
+      (r.createdByName || '').toLowerCase().includes(search)
+    );
+  }
+
+  if (createdBy && createdBy !== 'All') {
+    restores = restores.filter(r => r.createdByEmail === createdBy);
+  }
+
+  if (dateFrom) {
+    const fromTime = new Date(dateFrom).getTime();
+    restores = restores.filter(r => new Date(r.createdAt).getTime() >= fromTime);
+  }
+
+  if (dateTo) {
+    const toTime = new Date(dateTo).setHours(23, 59, 59, 999);
+    restores = restores.filter(r => new Date(r.createdAt).getTime() <= toTime);
+  }
+
+  // Sort
+  if (sort === 'oldest') {
+    restores.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  } else if (sort === 'size_desc') {
+    restores.sort((a, b) => (b.size || 0) - (a.size || 0));
+  } else if (sort === 'size_asc') {
+    restores.sort((a, b) => (a.size || 0) - (b.size || 0));
+  } else {
+    // default: newest
+    restores.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+
+  // Pagination
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 5;
+  const totalItems = restores.length;
+  const totalPages = Math.ceil(totalItems / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedRestores = restores.slice(startIndex, startIndex + limit);
+
+  // Get unique users for filter options
+  const allRestoreUsers = Array.from(new Set((db.restores || []).map(r => r.createdByEmail).filter(Boolean)));
+  const uniqueUsers = allRestoreUsers.map(email => {
+    const found = db.restores?.find(r => r.createdByEmail === email);
+    return {
+      email,
+      name: found?.createdByName || email
+    };
+  });
+
+  res.json({
+    restores: paginatedRestores,
+    uniqueUsers,
     pagination: {
       currentPage: page,
       limit,
@@ -1577,6 +1786,9 @@ app.post('/api/admin/backups', requireAdminOrManager, (req: Request, res: Respon
       size: fs.statSync(backupPath).size,
       createdAt: new Date().toISOString(),
       isAutomatic,
+      description: req.body.description || '',
+      createdByEmail: user.email,
+      createdByName: user.name,
     };
 
     if (!db.backups) {
@@ -1627,6 +1839,23 @@ app.post('/api/admin/backups/restore', requireAdminOrManager, (req: Request, res
     // Write to active db.json
     fs.writeFileSync(path.join(process.cwd(), 'db.json'), contentStr, 'utf-8');
 
+    // Load active DB which now has the backup's tables and append restore record
+    const db = getDb();
+    if (!db.restores) {
+      db.restores = [];
+    }
+    const restoreEvent: RestoreEvent = {
+      id: `restore-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      filename: safeFilename,
+      size: fs.statSync(backupPath).size,
+      createdAt: new Date().toISOString(),
+      createdByEmail: user.email,
+      createdByName: user.name,
+      description: `Restored database state from backup "${safeFilename}"`
+    };
+    db.restores.push(restoreEvent);
+    saveDb(db);
+
     logActivity(req, 'Restore Backup', `Database successfully restored from backup file "${safeFilename}".`);
 
     res.json({ success: true, message: 'Database restored successfully.' });
@@ -1669,7 +1898,7 @@ app.post('/api/admin/backups/upload', requireAdminOrManager, (req: Request, res:
     return res.status(403).json({ message: 'Forbidden. Admin role required.' });
   }
 
-  const { filename, content } = req.body;
+  const { filename, content, restore } = req.body;
   if (!filename || !content) {
     return res.status(400).json({ message: 'Filename and content are required.' });
   }
@@ -1691,7 +1920,6 @@ app.post('/api/admin/backups/upload', requireAdminOrManager, (req: Request, res:
 
     fs.writeFileSync(backupPath, JSON.stringify(parsed, null, 2), 'utf-8');
 
-    const db = getDb();
     const newBackup: BackupFile = {
       filename: safeFilename,
       size: fs.statSync(backupPath).size,
@@ -1699,13 +1927,45 @@ app.post('/api/admin/backups/upload', requireAdminOrManager, (req: Request, res:
       isAutomatic: false,
     };
 
-    if (!db.backups) {
-      db.backups = [];
-    }
-    db.backups.push(newBackup);
-    saveDb(db);
+    const shouldRestore = restore === true || req.query.restore === 'true';
+    if (shouldRestore) {
+      // Overwrite the main active db.json file
+      fs.writeFileSync(path.join(process.cwd(), 'db.json'), JSON.stringify(parsed, null, 2), 'utf-8');
 
-    logActivity(req, 'Upload Backup', `External backup file "${safeFilename}" uploaded successfully.`);
+      const activeDb = getDb();
+      if (!activeDb.backups) {
+        activeDb.backups = [];
+      }
+      if (!activeDb.backups.some(b => b.filename === safeFilename)) {
+        activeDb.backups.push(newBackup);
+      }
+
+      if (!activeDb.restores) {
+        activeDb.restores = [];
+      }
+      const restoreEvent: RestoreEvent = {
+        id: `restore-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        filename: safeFilename,
+        size: fs.statSync(backupPath).size,
+        createdAt: new Date().toISOString(),
+        createdByEmail: user.email,
+        createdByName: user.name,
+        description: `Uploaded and restored database state from backup "${safeFilename}"`
+      };
+      activeDb.restores.push(restoreEvent);
+      saveDb(activeDb);
+
+      logActivity(req, 'Restore Backup', `Database successfully restored from uploaded backup file "${safeFilename}".`);
+    } else {
+      const db = getDb();
+      if (!db.backups) {
+        db.backups = [];
+      }
+      db.backups.push(newBackup);
+      saveDb(db);
+
+      logActivity(req, 'Upload Backup', `External backup file "${safeFilename}" uploaded successfully.`);
+    }
 
     res.status(201).json(newBackup);
   } catch (err: any) {
@@ -1743,6 +2003,37 @@ app.delete('/api/admin/backups/:filename', requireAdminOrManager, (req: Request,
     res.json({ success: true, message: 'Backup file deleted successfully.' });
   } catch (err: any) {
     console.error('Delete backup failed:', err);
+    res.status(500).json({ message: `Delete failed: ${err.message}` });
+  }
+});
+
+// Delete Restore Event (Admins Only)
+app.delete('/api/admin/restores/:id', requireAdminOrManager, (req: Request, res: Response) => {
+  const user = (req as any).user as User;
+  if (user.role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden. Admin role required.' });
+  }
+
+  const { id } = req.params;
+  const db = getDb();
+  if (!db.restores) {
+    return res.status(404).json({ message: 'Restore history is empty.' });
+  }
+
+  const restoreEvent = db.restores.find(r => r.id === id);
+  if (!restoreEvent) {
+    return res.status(404).json({ message: 'Restore record not found.' });
+  }
+
+  try {
+    db.restores = db.restores.filter(r => r.id !== id);
+    saveDb(db);
+
+    logActivity(req, 'Delete Restore Event', `Restore history record for backup "${restoreEvent.filename}" was deleted.`);
+
+    res.json({ success: true, message: 'Restore history record deleted successfully.' });
+  } catch (err: any) {
+    console.error('Delete restore failed:', err);
     res.status(500).json({ message: `Delete failed: ${err.message}` });
   }
 });

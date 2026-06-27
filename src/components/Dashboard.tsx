@@ -5,7 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { DollarSign, ShoppingBag, Package, Users, TrendingUp, Award, Clock } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
-  const { t, apiFetch } = useApp();
+  const { t, apiFetch, settings } = useApp();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +45,7 @@ export const Dashboard: React.FC = () => {
           </div>
           <div>
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('kpiRevenue')}</span>
-            <h3 className="text-2xl font-black text-gray-800 tracking-tight">${stats.totalRevenue.toLocaleString()}</h3>
+            <h3 className="text-2xl font-black text-gray-800 tracking-tight">{stats.totalRevenue.toLocaleString()} {settings?.currency || 'USD'}</h3>
           </div>
         </div>
 
@@ -108,7 +108,7 @@ export const Dashboard: React.FC = () => {
                 <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #f1f5f9', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.05)' }} 
-                  formatter={(value: any) => [`$${value}`, 'Revenue']}
+                  formatter={(value: any) => [`${value} ${settings?.currency || 'USD'}`, 'Revenue']}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
@@ -168,7 +168,7 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </td>
                   <td className="py-4 px-4 text-center text-sm font-bold text-gray-600">{p.sales}</td>
-                  <td className="py-4 px-4 text-right text-sm font-black text-emerald-600">${p.revenue.toLocaleString()}</td>
+                  <td className="py-4 px-4 text-right text-sm font-black text-emerald-600">{p.revenue.toLocaleString()} {settings?.currency || 'USD'}</td>
                 </tr>
               ))}
             </tbody>

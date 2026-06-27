@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Product, Category, Order, SystemSettings } from '../types';
 
-export type ActiveTab = 'store' | 'cart' | 'my-orders' | 'admin';
+export type ActiveTab = 'store' | 'cart' | 'my-orders' | 'admin' | 'wishlist' | 'refund-policy' | 'privacy-policy' | 'terms-of-service';
 export type AdminSubTab = 'dashboard' | 'products' | 'categories' | 'orders' | 'admin-users' | 'customers' | 'settings' | 'payments' | 'activity-logs' | 'backup-restore';
 export type Language = 'en' | 'ar';
 

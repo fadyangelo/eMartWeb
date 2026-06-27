@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { User, Product, Category, Order, OrderStatus, SystemSettings, Transaction, ActivityLog, BackupFile, ShippingCity } from '../src/types';
+import { User, Product, Category, Order, OrderStatus, SystemSettings, Transaction, ActivityLog, BackupFile, ShippingCity, RestoreEvent } from '../src/types';
 
 const DB_PATH = path.join(process.cwd(), 'db.json');
 
@@ -15,6 +15,7 @@ interface DatabaseSchema {
   activityLogs?: ActivityLog[];
   backups?: BackupFile[];
   shippingCities?: ShippingCity[];
+  restores?: RestoreEvent[];
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
@@ -461,7 +462,8 @@ export const getDb = (): DatabaseSchema => {
       transactions: generateMockTransactions(initialOrders),
       activityLogs: MOCK_ACTIVITY_LOGS,
       backups: [],
-      shippingCities: DEFAULT_CITIES
+      shippingCities: DEFAULT_CITIES,
+      restores: []
     };
     saveDb(initialDb);
     return initialDb;
@@ -491,6 +493,10 @@ export const getDb = (): DatabaseSchema => {
       parsed.shippingCities = DEFAULT_CITIES;
       updated = true;
     }
+    if (!parsed.restores) {
+      parsed.restores = [];
+      updated = true;
+    }
     if (updated) {
       saveDb(parsed);
     }
@@ -508,7 +514,8 @@ export const getDb = (): DatabaseSchema => {
       transactions: generateMockTransactions(initialOrders),
       activityLogs: MOCK_ACTIVITY_LOGS,
       backups: [],
-      shippingCities: DEFAULT_CITIES
+      shippingCities: DEFAULT_CITIES,
+      restores: []
     };
     saveDb(initialDb);
     return initialDb;
