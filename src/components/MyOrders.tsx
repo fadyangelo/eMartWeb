@@ -4,7 +4,7 @@ import { Order, OrderStatus } from '../types';
 import { ChevronLeft, ChevronRight, Package, Clock, ShieldCheck, Truck, ShoppingBag, RotateCcw, AlertTriangle, ArrowRight } from 'lucide-react';
 
 export const MyOrders: React.FC = () => {
-  const { language, t, apiFetch, user, setShowAuthModal } = useApp();
+  const { language, t, apiFetch, user, setShowAuthModal, settings } = useApp();
   
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,15 +238,51 @@ export const MyOrders: React.FC = () => {
                           <p className="font-semibold text-gray-800">
                             {language === 'ar' ? item.productNameAr : item.productNameEn}
                           </p>
-                          <p className="text-[10px] text-gray-400">Qty: {item.quantity} x ${item.price.toFixed(2)}</p>
+                          <p className="text-[10px] text-gray-400">Qty: {item.quantity} x {item.price.toFixed(2)} {settings?.currency || 'USD'}</p>
                         </div>
-                        <span className="font-bold text-gray-700">${(item.quantity * item.price).toFixed(2)}</span>
+                        <span className="font-bold text-gray-700">{(item.quantity * item.price).toFixed(2)} {settings?.currency || 'USD'}</span>
                       </div>
                     ))}
                   </div>
-                  <div className="flex justify-between items-center border-t pt-3 text-sm font-bold text-gray-900">
-                    <span>{t('orderTotal')}</span>
-                    <span className="text-emerald-600">${selectedOrder.totalAmount.toFixed(2)}</span>
+
+                  <div className="border-t pt-3 space-y-1.5 text-xs font-semibold text-gray-600">
+                    {(() => {
+                      const itemsSubtotal = selectedOrder.items.reduce((sum, i) => sum + (i.quantity * i.price), 0);
+                      const curr = settings?.currency || 'USD';
+                      return (
+                        <>
+                          <div className="flex justify-between items-center text-gray-500">
+                            <span>{language === 'ar' ? 'مجموع المنتجات' : 'Items Subtotal'}</span>
+                            <span className="font-mono">{itemsSubtotal.toFixed(2)} {curr}</span>
+                          </div>
+                          {selectedOrder.shippingFee !== undefined && selectedOrder.shippingFee > 0 && (
+                            <div className="flex justify-between items-center text-gray-500">
+                              <span>{language === 'ar' ? 'رسوم الشحن الافتراضية' : 'Default Shipping Fee'}</span>
+                              <span className="font-mono">+{selectedOrder.shippingFee.toFixed(2)} {curr}</span>
+                            </div>
+                          )}
+                          {selectedOrder.shippingDiscount !== undefined && selectedOrder.shippingDiscount > 0 && (
+                            <div className="flex justify-between items-center text-rose-600 font-bold">
+                              <span>{language === 'ar' ? 'خصم الشحن' : 'Shipping Discount'}</span>
+                              <span className="font-mono">-{selectedOrder.shippingDiscount.toFixed(2)} {curr}</span>
+                            </div>
+                          )}
+                          {selectedOrder.codCharge !== undefined && selectedOrder.codCharge > 0 && (
+                            <div className="flex justify-between items-center text-gray-500">
+                              <span>{language === 'ar' ? 'رسوم الدفع عند الاستلام' : 'COD Extra Charge'}</span>
+                              <span className="font-mono">+{selectedOrder.codCharge.toFixed(2)} {curr}</span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+
+                    <div className="flex justify-between items-center border-t pt-2 text-sm font-bold text-gray-900">
+                      <span>{t('orderTotal')}</span>
+                      <span className="text-emerald-600 font-extrabold font-mono">
+                        {selectedOrder.totalAmount.toFixed(2)} {settings?.currency || 'USD'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -257,6 +293,15 @@ export const MyOrders: React.FC = () => {
                     <p><span className="font-semibold text-gray-700">{t('shippingTo')}:</span> {selectedOrder.customerName}</p>
                     <p><span className="font-semibold text-gray-700">{t('cityLabel')}:</span> {selectedOrder.shippingAddress.city}</p>
                     <p><span className="font-semibold text-gray-700">{t('streetLabel')}:</span> {selectedOrder.shippingAddress.street}</p>
+                    {selectedOrder.shippingAddress.nearestLandmark && (
+                      <p><span className="font-semibold text-gray-700">{language === 'ar' ? 'أقرب علامة مميزة' : 'Nearest Landmark'}:</span> {selectedOrder.shippingAddress.nearestLandmark}</p>
+                    )}
+                    {selectedOrder.shippingAddress.buildingFloor && (
+                      <p><span className="font-semibold text-gray-700">{language === 'ar' ? 'الطابق والشقة' : 'Floor & Apartment'}:</span> {selectedOrder.shippingAddress.buildingFloor}</p>
+                    )}
+                    {selectedOrder.shippingAddress.preferredDeliveryTime && (
+                      <p><span className="font-semibold text-gray-700">{language === 'ar' ? 'وقت التوصيل المفضل' : 'Preferred Delivery Time'}:</span> {selectedOrder.shippingAddress.preferredDeliveryTime}</p>
+                    )}
                     <p><span className="font-semibold text-gray-700">{t('phoneLabel')}:</span> {selectedOrder.shippingAddress.phone}</p>
                     
                     <div className="pt-3 border-t">

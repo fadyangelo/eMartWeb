@@ -1,14 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Category } from '../types';
-import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
-  const { language, t, addToCart, apiFetch } = useApp();
+  const { language, t, addToCart, apiFetch, settings, getProductPrice, token, user } = useApp();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Wishlist State
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('wishlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleWishlist = (productId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setWishlist(prev => {
+      const next = prev.includes(productId)
+        ? prev.filter(id => id !== productId)
+        : [...prev, productId];
+      localStorage.setItem('wishlist', JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Filters State
   const [search, setSearch] = useState('');
@@ -24,6 +46,75 @@ export const StoreFront: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [addedProductIds, setAddedProductIds] = useState<Record<string, boolean>>({});
+
+  // Product Details active image
+  const [activeImage, setActiveImage] = useState('');
+  // Lightbox Zoom state
+  const [isZoomed, setIsZoomed] = useState(false);
+  // Active Tab: 'desc' | 'specs' | 'reviews'
+  const [activeTab, setActiveTab] = useState<'desc' | 'specs' | 'reviews'>('desc');
+  // New Review state
+  const [newRating, setNewRating] = useState(5);
+  const [newComment, setNewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSuccessMsg, setReviewSuccessMsg] = useState('');
+
+  useEffect(() => {
+    if (selectedProduct) {
+      setActiveImage(selectedProduct.imageUrl);
+      setActiveTab('desc');
+      setNewRating(5);
+      setNewComment('');
+      setReviewSuccessMsg('');
+    }
+  }, [selectedProduct]);
+
+  const getYouTubeEmbedUrl = (url?: string) => {
+    if (!url) return null;
+    let videoId = '';
+    if (url.includes('v=')) {
+      videoId = url.split('v=')[1].split('&')[0];
+    } else if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split('?')[0];
+    } else if (url.includes('embed/')) {
+      videoId = url.split('embed/')[1].split('?')[0];
+    }
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  };
+
+  const handleReviewSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      alert(language === 'ar' ? 'يرجى تسجيل الدخول لكتابة مراجعة!' : 'Please login to write a review!');
+      return;
+    }
+    if (!selectedProduct) return;
+    setReviewSubmitting(true);
+    try {
+      const response = await fetch(`/api/products/${selectedProduct.id}/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ rating: newRating, comment: newComment })
+      });
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Failed to submit review');
+      }
+      const data = await response.json();
+      // Update local product state with new review
+      setSelectedProduct(data.product);
+      setNewComment('');
+      setReviewSuccessMsg(language === 'ar' ? 'تمت إضافة مراجعتك بنجاح!' : 'Your review was submitted successfully!');
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Error submitting review');
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
 
   // Fetch Categories
   useEffect(() => {
@@ -269,7 +360,10 @@ export const StoreFront: React.FC = () => {
               className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-xs hover:shadow-lg hover:border-emerald-100 transition-all duration-300 flex flex-col h-[400px]"
             >
               {/* Product Image */}
-              <div className="relative h-48 bg-gray-50 overflow-hidden shrink-0">
+              <div 
+                className="relative h-48 bg-gray-50 overflow-hidden shrink-0 cursor-pointer"
+                onClick={() => setSelectedProduct(p)}
+              >
                 <img
                   referrerPolicy="no-referrer"
                   src={p.imageUrl}
@@ -277,46 +371,94 @@ export const StoreFront: React.FC = () => {
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
                 
+                {/* Wishlist Button floating */}
+                <button
+                  id={`wishlist-toggle-${p.id}`}
+                  onClick={(e) => toggleWishlist(p.id, e)}
+                  className="absolute top-3 right-3 z-10 p-2 bg-white/90 backdrop-blur-xs rounded-full shadow-sm hover:scale-110 active:scale-95 transition"
+                >
+                  <Heart
+                    size={16}
+                    className={`transition-colors ${
+                      wishlist.includes(p.id)
+                        ? 'fill-rose-500 text-rose-500'
+                        : 'text-gray-400 hover:text-rose-500'
+                    }`}
+                  />
+                </button>
+
                 {/* Badges */}
-                <div className="absolute top-3 left-3 right-3 flex justify-between items-start pointer-events-none">
-                  {p.stock <= 5 && p.stock > 0 && (
-                    <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                      {t('onlyLeft').replace('{num}', p.stock.toString())}
-                    </span>
-                  )}
-                  {p.stock === 0 && (
-                    <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                      {t('outOfStock')}
-                    </span>
-                  )}
+                <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
+                  {(() => {
+                    const isStockLimited = p.stock !== undefined && p.stock !== null && (p.stock as any) !== '';
+                    if (isStockLimited) {
+                      const stockNum = Number(p.stock);
+                      if (stockNum === 0) {
+                        return (
+                          <span className="bg-red-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
+                            {t('outOfStock')}
+                          </span>
+                        );
+                      } else if (stockNum < 10) {
+                        return (
+                          <span className="bg-amber-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md animate-pulse">
+                            {language === 'ar' ? `متبقي ${stockNum} فقط!` : `Only ${stockNum} left!`}
+                          </span>
+                        );
+                      } else {
+                        return (
+                          <span className="bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
+                            {language === 'ar' ? `متوفر: ${stockNum}` : `In Stock: ${stockNum}`}
+                          </span>
+                        );
+                      }
+                    } else {
+                      return (
+                        <span className="bg-emerald-500 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
+                          {language === 'ar' ? 'متوفر' : 'In Stock'}
+                        </span>
+                      );
+                    }
+                  })()}
+                  
                   {p.topSelling && (
-                    <span className="bg-indigo-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ml-auto">
+                    <span className="bg-indigo-600 text-white text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider shadow-md">
                       Best Seller
                     </span>
                   )}
                 </div>
 
                 {/* Quick View Button overlay */}
-                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
-                  <button
-                    id={`quick-view-btn-${p.id}`}
-                    onClick={() => setSelectedProduct(p)}
-                    className="p-3 bg-white rounded-full text-gray-800 shadow-md hover:bg-emerald-500 hover:text-white transition transform translate-y-4 group-hover:translate-y-0"
-                  >
-                    <Eye size={18} />
-                  </button>
+                <div className="absolute inset-0 bg-black/15 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
+                  <span className="px-4 py-2 bg-white/95 backdrop-blur-xs text-xs font-bold text-gray-800 rounded-full shadow-md flex items-center gap-1.5 transform translate-y-4 group-hover:translate-y-0 transition">
+                    <Eye size={14} className="text-emerald-500" />
+                    {language === 'ar' ? 'عرض التفاصيل' : 'View Details'}
+                  </span>
                 </div>
               </div>
 
               {/* Product Info */}
               <div className="p-5 flex flex-col justify-between flex-1">
                 <div className="space-y-1.5">
-                  <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
-                    {categories.find(c => c.id === p.categoryId)
-                      ? (language === 'ar' ? categories.find(c => c.id === p.categoryId)?.nameAr : categories.find(c => c.id === p.categoryId)?.nameEn)
-                      : ''}
-                  </span>
-                  <h4 className="font-semibold text-gray-900 line-clamp-1 group-hover:text-emerald-600 transition">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
+                      {categories.find(c => c.id === p.categoryId)
+                        ? (language === 'ar' ? categories.find(c => c.id === p.categoryId)?.nameAr : categories.find(c => c.id === p.categoryId)?.nameEn)
+                        : ''}
+                    </span>
+                    
+                    {/* Star Rating on product card */}
+                    <div className="flex items-center gap-1">
+                      <Star size={12} className="fill-amber-400 text-amber-400" />
+                      <span className="text-xs font-bold text-gray-700">{p.rating || 5}</span>
+                      <span className="text-[10px] text-gray-400">({p.reviewsCount || 0})</span>
+                    </div>
+                  </div>
+                  
+                  <h4 
+                    onClick={() => setSelectedProduct(p)}
+                    className="font-bold text-gray-900 line-clamp-1 group-hover:text-emerald-600 transition cursor-pointer"
+                  >
                     {language === 'ar' ? p.nameAr : p.nameEn}
                   </h4>
                   <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
@@ -324,15 +466,40 @@ export const StoreFront: React.FC = () => {
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-                  <span className="text-lg font-bold text-gray-900">${p.price.toFixed(2)}</span>
+                <div className="flex items-center justify-between pt-4 border-t border-gray-50 flex-wrap gap-2">
+                  {(() => {
+                    const { original, final, hasDiscount, discountText } = getProductPrice(p);
+                    const curr = settings?.currency || 'USD';
+                    if (hasDiscount) {
+                      return (
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs line-through text-gray-400 font-medium">
+                              {original.toFixed(2)} {curr}
+                            </span>
+                            <span className="bg-rose-100 text-rose-600 text-[9px] px-1.5 py-0.5 rounded-sm font-bold">
+                              {discountText}
+                            </span>
+                          </div>
+                          <span className="text-base font-bold text-rose-600">
+                            {final.toFixed(2)} {curr}
+                          </span>
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className="text-base font-bold text-gray-900">
+                        {original.toFixed(2)} {curr}
+                      </span>
+                    );
+                  })()}
                   
                   <button
                     id={`add-cart-btn-${p.id}`}
                     onClick={() => handleAddToCart(p)}
-                    disabled={p.stock === 0}
+                    disabled={p.stock !== undefined && p.stock !== null && (p.stock as any) !== '' && Number(p.stock) === 0}
                     className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg transition-all ${
-                      p.stock === 0
+                      p.stock !== undefined && p.stock !== null && (p.stock as any) !== '' && Number(p.stock) === 0
                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         : addedProductIds[p.id]
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -385,58 +552,331 @@ export const StoreFront: React.FC = () => {
         </div>
       )}
 
-      {/* Product Quick View Modal */}
+      {/* Product Details Modal (Complete specifications, video, datasheets, zoomable gallery & interactive reviews) */}
       {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs overflow-y-auto">
           <div 
             id="quick-view-modal"
-            className="relative w-full max-w-2xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 flex flex-col md:flex-row"
+            className="relative w-full max-w-4xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 flex flex-col md:flex-row my-8"
           >
             {/* Close Button */}
             <button
               id="close-quick-view-btn"
               onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 z-10 p-1.5 rounded-full bg-white/90 text-gray-500 hover:text-gray-800 shadow-md border"
+              className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/90 text-gray-500 hover:text-red-500 shadow-md border hover:scale-105 transition"
             >
-              <ChevronLeft size={18} className="rotate-180" />
+              <X size={18} />
             </button>
 
-            {/* Left Image Column */}
-            <div className="md:w-1/2 h-64 md:h-auto bg-gray-50">
-              <img
-                referrerPolicy="no-referrer"
-                src={selectedProduct.imageUrl}
-                alt={language === 'ar' ? selectedProduct.nameAr : selectedProduct.nameEn}
-                className="w-full h-full object-cover"
-              />
-            </div>
+            {/* Left Column: Multi-Image Zoom Gallery */}
+            <div className="md:w-1/2 p-6 bg-gray-50/50 flex flex-col justify-between border-r border-gray-100">
+              <div className="space-y-4">
+                {/* Main Image View */}
+                <div 
+                  className="relative h-72 md:h-96 rounded-2xl bg-white overflow-hidden border border-gray-100 group cursor-zoom-in"
+                  onClick={() => setIsZoomed(true)}
+                >
+                  <img
+                    referrerPolicy="no-referrer"
+                    src={activeImage || selectedProduct.imageUrl}
+                    alt={language === 'ar' ? selectedProduct.nameAr : selectedProduct.nameEn}
+                    className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 flex items-center justify-center transition duration-300">
+                    <span className="p-3 bg-white/90 backdrop-blur-xs rounded-full shadow-md text-gray-700">
+                      <ZoomIn size={20} />
+                    </span>
+                  </div>
+                </div>
 
-            {/* Right Info Column */}
-            <div className="p-6 md:w-1/2 flex flex-col justify-between">
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider block">
-                  {categories.find(c => c.id === selectedProduct.categoryId)
-                    ? (language === 'ar' ? categories.find(c => c.id === selectedProduct.categoryId)?.nameAr : categories.find(c => c.id === selectedProduct.categoryId)?.nameEn)
-                    : ''}
-                </span>
-                <h3 className="text-xl font-bold text-gray-900 leading-tight">
-                  {language === 'ar' ? selectedProduct.nameAr : selectedProduct.nameEn}
-                </h3>
-                <p className="text-2xl font-black text-emerald-600">${selectedProduct.price.toFixed(2)}</p>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  {language === 'ar' ? selectedProduct.descriptionAr : selectedProduct.descriptionEn}
-                </p>
+                {/* Gallery Thumbnails */}
+                {selectedProduct.images && selectedProduct.images.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                    {/* Include main image in thumbnails */}
+                    {[selectedProduct.imageUrl, ...selectedProduct.images].map((imgUrl, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setActiveImage(imgUrl)}
+                        className={`w-16 h-16 rounded-xl border-2 overflow-hidden bg-white shrink-0 transition ${
+                          activeImage === imgUrl ? 'border-emerald-500 scale-95 shadow-xs' : 'border-gray-200 opacity-70 hover:opacity-100'
+                        }`}
+                      >
+                        <img referrerPolicy="no-referrer" src={imgUrl} alt="Thumbnail" className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
+              {/* Data sheets (if available) */}
+              {selectedProduct.datasheetUrl && (
+                <div className="mt-4 p-3 bg-emerald-50/40 border border-emerald-100 rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FileText className="text-emerald-600 shrink-0" size={18} />
+                    <span className="text-xs font-bold text-gray-700">
+                      {language === 'ar' ? 'كتيب المواصفات الفنية' : 'Technical Datasheet PDF'}
+                    </span>
+                  </div>
+                  <a
+                    href={selectedProduct.datasheetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition"
+                  >
+                    {language === 'ar' ? 'تنزيل PDF' : 'Download'}
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Tabbed Information Details */}
+            <div className="p-8 md:w-1/2 flex flex-col justify-between max-h-[85vh] overflow-y-auto">
+              <div className="space-y-4">
+                <div>
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider block mb-1">
+                    {categories.find(c => c.id === selectedProduct.categoryId)
+                      ? (language === 'ar' ? categories.find(c => c.id === selectedProduct.categoryId)?.nameAr : categories.find(c => c.id === selectedProduct.categoryId)?.nameEn)
+                      : ''}
+                  </span>
+                  <h3 className="text-2xl font-extrabold text-gray-900 leading-tight">
+                    {language === 'ar' ? selectedProduct.nameAr : selectedProduct.nameEn}
+                  </h3>
+                </div>
+
+                {/* Rating & reviews counter info */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-lg">
+                    <Star size={14} className="fill-amber-400 text-amber-400" />
+                    <span className="text-sm font-black text-amber-700">{selectedProduct.rating || 5}</span>
+                  </div>
+                  <span className="text-xs text-gray-400 font-semibold">
+                    {selectedProduct.reviewsCount || 0} {language === 'ar' ? 'مراجعات العملاء' : 'Customer Reviews'}
+                  </span>
+                </div>
+
+                {/* Price block */}
+                {(() => {
+                  const { original, final, hasDiscount, discountText } = getProductPrice(selectedProduct);
+                  const curr = settings?.currency || 'USD';
+                  if (hasDiscount) {
+                    return (
+                      <div className="p-3.5 bg-rose-50/50 rounded-2xl border border-rose-100/40">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm line-through text-gray-400 font-medium">
+                            {original.toFixed(2)} {curr}
+                          </span>
+                          <span className="bg-rose-100 text-rose-600 text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                            {discountText}
+                          </span>
+                        </div>
+                        <span className="text-3xl font-black text-rose-600 font-mono">
+                          {final.toFixed(2)} {curr}
+                        </span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="p-3.5 bg-emerald-50/40 rounded-2xl border border-emerald-100/30">
+                      <span className="text-3xl font-black text-emerald-600 font-mono">
+                        {original.toFixed(2)} {curr}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Tab Navigation buttons */}
+                <div className="flex border-b border-gray-100">
+                  <button
+                    onClick={() => setActiveTab('desc')}
+                    className={`flex-1 py-2 text-xs font-bold transition-colors border-b-2 ${
+                      activeTab === 'desc' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {language === 'ar' ? 'الوصف' : 'Description'}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('specs')}
+                    className={`flex-1 py-2 text-xs font-bold transition-colors border-b-2 ${
+                      activeTab === 'specs' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {language === 'ar' ? 'المواصفات' : 'Specifications'}
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('reviews')}
+                    className={`flex-1 py-2 text-xs font-bold transition-colors border-b-2 ${
+                      activeTab === 'reviews' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                    {language === 'ar' ? 'المراجعات' : 'Reviews'} ({selectedProduct.reviews?.length || 0})
+                  </button>
+                </div>
+
+                {/* Tab Contents */}
+                <div className="py-2">
+                  {activeTab === 'desc' && (
+                    <div className="space-y-4 animate-fade-in text-sm text-gray-600 leading-relaxed">
+                      <p>{language === 'ar' ? selectedProduct.descriptionAr : selectedProduct.descriptionEn}</p>
+                      
+                      {/* Embedded Video (if available) */}
+                      {selectedProduct.videoUrl && getYouTubeEmbedUrl(selectedProduct.videoUrl) && (
+                        <div className="space-y-2 pt-2">
+                          <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                            <Youtube className="text-red-500" size={16} />
+                            {language === 'ar' ? 'الفيديو التعريفي للمنتج' : 'Product Video Demonstration'}
+                          </span>
+                          <div className="relative aspect-video w-full rounded-2xl overflow-hidden border bg-black shadow-inner">
+                            <iframe
+                              className="absolute top-0 left-0 w-full h-full"
+                              src={getYouTubeEmbedUrl(selectedProduct.videoUrl) || ''}
+                              title="Product Video"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            ></iframe>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'specs' && (
+                    <div className="animate-fade-in">
+                      {selectedProduct.specificationsEn || selectedProduct.specificationsAr ? (
+                        <div className="p-4 bg-gray-50/50 rounded-2xl border border-gray-100 text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+                          {language === 'ar' 
+                            ? (selectedProduct.specificationsAr || selectedProduct.specificationsEn)
+                            : (selectedProduct.specificationsEn || selectedProduct.specificationsAr)
+                          }
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic py-4 text-center">
+                          {language === 'ar' ? 'لم يتم توفير مواصفات فنية إضافية لهذا المنتج.' : 'No additional specifications provided for this product.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === 'reviews' && (
+                    <div className="space-y-4 animate-fade-in">
+                      {/* Existing Reviews List */}
+                      <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                        {selectedProduct.reviews && selectedProduct.reviews.length > 0 ? (
+                          selectedProduct.reviews.map((rev) => (
+                            <div key={rev.id} className="p-3 bg-gray-50/50 border rounded-xl space-y-1 text-xs">
+                              <div className="flex justify-between items-center">
+                                <span className="font-bold text-gray-800">{rev.userName}</span>
+                                <div className="flex items-center gap-0.5">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star
+                                      key={i}
+                                      size={10}
+                                      className={i < rev.rating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-gray-600 italic">"{rev.comment}"</p>
+                              <span className="text-[9px] text-gray-400 block">
+                                {new Date(rev.createdAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-xs text-gray-400 italic py-4 text-center">
+                            {language === 'ar' ? 'لا توجد مراجعات بعد. كن أول من يكتب مراجعة!' : 'No reviews yet. Be the first to write a review!'}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Add Review Form */}
+                      {user ? (
+                        <form onSubmit={handleReviewSubmit} className="pt-3 border-t space-y-3">
+                          <p className="text-xs font-bold text-gray-800">
+                            {language === 'ar' ? 'اكتب مراجعتك وتقييمك' : 'Write your Review & Rating'}
+                          </p>
+                          
+                          {reviewSuccessMsg && (
+                            <div className="p-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg">
+                              {reviewSuccessMsg}
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-500 mr-1">
+                              {language === 'ar' ? 'التقييم:' : 'Rating:'}
+                            </span>
+                            {Array.from({ length: 5 }).map((_, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setNewRating(i + 1)}
+                                className="p-0.5 focus:outline-none"
+                              >
+                                <Star
+                                  size={16}
+                                  className={i < newRating ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}
+                                />
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="space-y-1">
+                            <textarea
+                              required
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                              rows={2}
+                              placeholder={language === 'ar' ? 'اكتب تعليقك هنا...' : 'Describe your experience with this product...'}
+                              className="w-full text-xs p-2 bg-white border border-gray-200 rounded-xl focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                            />
+                          </div>
+
+                          <button
+                            type="submit"
+                            disabled={reviewSubmitting}
+                            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5"
+                          >
+                            {reviewSubmitting ? (
+                              <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                            ) : (
+                              language === 'ar' ? 'إرسال المراجعة' : 'Submit Review'
+                            )}
+                          </button>
+                        </form>
+                      ) : (
+                        <p className="text-[10px] text-indigo-600 bg-indigo-50 p-2 rounded-lg text-center font-semibold">
+                          {language === 'ar' ? '* يرجى تسجيل الدخول لتتمكن من كتابة تقييم ومراجعة للمنتج.' : '* Please login to write a rating and product review.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Add to Cart Footer block */}
               <div className="pt-6 border-t border-gray-100 space-y-3">
                 <div className="flex items-center justify-between text-xs font-semibold text-gray-500">
                   <span>Stock Status:</span>
                   <span>
-                    {selectedProduct.stock > 0 ? (
-                      <span className="text-emerald-600">{selectedProduct.stock} units available</span>
-                    ) : (
-                      <span className="text-red-500">{t('outOfStock')}</span>
-                    )}
+                    {(() => {
+                      const isStockLimited = selectedProduct.stock !== undefined && selectedProduct.stock !== null && (selectedProduct.stock as any) !== '';
+                      if (isStockLimited) {
+                        const stockNum = Number(selectedProduct.stock);
+                        if (stockNum === 0) {
+                          return <span className="text-rose-600 font-bold">{t('outOfStock')}</span>;
+                        } else if (stockNum < 10) {
+                          return <span className="text-amber-600 font-bold">{language === 'ar' ? `متبقي ${stockNum} فقط!` : `Only ${stockNum} left!`}</span>;
+                        } else {
+                          return <span className="text-emerald-600 font-bold">{language === 'ar' ? `متوفر: ${stockNum} وحدة` : `${stockNum} units available`}</span>;
+                        }
+                      } else {
+                        return <span className="text-emerald-600 font-bold">{language === 'ar' ? 'متوفر' : 'In Stock'}</span>;
+                      }
+                    })()}
                   </span>
                 </div>
 
@@ -446,14 +886,37 @@ export const StoreFront: React.FC = () => {
                     handleAddToCart(selectedProduct);
                     setSelectedProduct(null);
                   }}
-                  disabled={selectedProduct.stock === 0}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-100 disabled:text-gray-400 text-white rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
+                  disabled={selectedProduct.stock !== undefined && selectedProduct.stock !== null && (selectedProduct.stock as any) !== '' && Number(selectedProduct.stock) === 0}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-100 disabled:text-gray-400 text-white rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2"
                 >
                   <ShoppingCart size={16} />
                   {t('addToCart')}
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Screen Lightbox Zoom */}
+      {selectedProduct && isZoomed && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 transition-all animate-fade-in"
+          onClick={() => setIsZoomed(false)}
+        >
+          <button 
+            onClick={() => setIsZoomed(false)}
+            className="absolute top-6 right-6 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition"
+          >
+            <X size={24} />
+          </button>
+          <div className="max-w-4xl max-h-[85vh] flex items-center justify-center overflow-hidden rounded-2xl bg-white p-6">
+            <img 
+              referrerPolicy="no-referrer"
+              src={activeImage || selectedProduct.imageUrl} 
+              alt="Zoomed Product" 
+              className="max-w-full max-h-[75vh] object-contain scale-110 hover:scale-125 transition-transform duration-300"
+            />
           </div>
         </div>
       )}

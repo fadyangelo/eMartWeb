@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Product, Category, Order } from '../types';
+import { User, Product, Category, Order, SystemSettings } from '../types';
 
 export type ActiveTab = 'store' | 'cart' | 'my-orders' | 'admin';
-export type AdminSubTab = 'dashboard' | 'products' | 'categories' | 'orders' | 'admin-users' | 'customers';
+export type AdminSubTab = 'dashboard' | 'products' | 'categories' | 'orders' | 'admin-users' | 'customers' | 'settings' | 'payments' | 'activity-logs' | 'backup-restore';
 export type Language = 'en' | 'ar';
 
 export interface CartItem {
@@ -32,6 +32,10 @@ interface AppContextType {
   setAuthModalCallback: (callback: (() => void) | null) => void;
   apiFetch: (url: string, options?: RequestInit) => Promise<any>;
   t: (key: string) => string;
+  settings: SystemSettings | null;
+  fetchSettings: () => Promise<void>;
+  isPromoActive: () => boolean;
+  getProductPrice: (product: Product) => { original: number; final: number; hasDiscount: boolean; discountText: string };
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -123,6 +127,9 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     adminCategories: 'Categories',
     adminOrders: 'Orders',
     adminUsers: 'Admin Staff',
+    activityLogs: 'Activity Logs',
+    backupRestore: 'Backup & Restore',
+    usersManagement: 'Users Management',
     siteUsers: 'Customers',
     revenue: 'Revenue',
     kpiRevenue: 'Total Revenues',
@@ -241,6 +248,9 @@ const TRANSLATIONS: Record<Language, Record<string, string>> = {
     adminCategories: 'الفئات',
     adminOrders: 'الطلبات',
     adminUsers: 'الموظفين',
+    activityLogs: 'سجلات النشاط',
+    backupRestore: 'النسخ الاحتياطي والاستعادة',
+    usersManagement: 'إدارة المستخدمين',
     siteUsers: 'العملاء',
     revenue: 'الإيرادات',
     kpiRevenue: 'إجمالي الإيرادات',
@@ -295,6 +305,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [adminSubTab, setAdminSubTab] = useState<AdminSubTab>('dashboard');
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalCallback, setAuthModalCallback] = useState<(() => void) | null>(null);
+  const [settings, setSettings] = useState<SystemSettings | null>(null);
+
+  const fetchSettings = async () => {
+    try {
+      const data = await apiFetch('/api/settings');
+      setSettings(data);
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, [token]);
+
+  const isPromoActive = (): boolean => {
+    if (!settings || !settings.promoTimerEnabled) return false;
+    if (!settings.promoTimerFrom || !settings.promoTimerTo) {
+      return true;
+    }
+    const now = new Date();
+    const from = new Date(settings.promoTimerFrom);
+    const to = new Date(settings.promoTimerTo);
+    return now >= from && now <= to;
+  };
+
+  const getProductPrice = (product: Product) => {
+    const original = product.price;
+    if (!isPromoActive()) {
+      return { original, final: original, hasDiscount: false, discountText: '' };
+    }
+
+    let final = original;
+    let hasDiscount = false;
+    let discountText = '';
+
+    if (product.discountPercent !== undefined && product.discountPercent > 0) {
+      final = original * (1 - product.discountPercent / 100);
+      hasDiscount = true;
+      discountText = `-${product.discountPercent}%`;
+    } else if (product.discountAmount !== undefined && product.discountAmount > 0) {
+      final = Math.max(0, original - product.discountAmount);
+      hasDiscount = true;
+      const cur = settings?.currency || 'USD';
+      discountText = `-${product.discountAmount} ${cur}`;
+    }
+
+    return { original, final, hasDiscount, discountText };
+  };
 
   useEffect(() => {
     localStorage.setItem('emart_lang', language);
@@ -329,10 +388,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addToCart = (product: Product) => {
     setCart(prev => {
       const idx = prev.findIndex(item => item.product.id === product.id);
+      const isStockLimited = product.stock !== undefined && product.stock !== null && (product.stock as any) !== '';
+      const stockLimit = isStockLimited ? Number(product.stock) : Infinity;
+
       if (idx > -1) {
+        const currentQty = prev[idx].quantity;
+        if (currentQty >= stockLimit) {
+          return prev; // cannot exceed stock limit
+        }
         return prev.map((item, i) =>
           i === idx ? { ...item, quantity: item.quantity + 1 } : item
         );
+      }
+      if (stockLimit <= 0) {
+        return prev; // out of stock
       }
       return [...prev, { product, quantity: 1 }];
     });
@@ -348,7 +417,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setCart(prev =>
-      prev.map(item => (item.product.id === productId ? { ...item, quantity } : item))
+      prev.map(item => {
+        if (item.product.id === productId) {
+          const isStockLimited = item.product.stock !== undefined && item.product.stock !== null && (item.product.stock as any) !== '';
+          const stockLimit = isStockLimited ? Number(item.product.stock) : Infinity;
+          const targetQty = Math.min(quantity, stockLimit);
+          return { ...item, quantity: targetQty };
+        }
+        return item;
+      })
     );
   };
 
@@ -407,6 +484,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAuthModalCallback,
         apiFetch,
         t,
+        settings,
+        fetchSettings,
+        isPromoActive,
+        getProductPrice,
       }}
     >
       {children}

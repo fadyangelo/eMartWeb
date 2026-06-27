@@ -8,8 +8,12 @@ import { AdminPanel } from './components/AdminPanel';
 import { AuthModal } from './components/AuthModal';
 import { 
   ShoppingBag, ShoppingCart, User as UserIcon, LogOut, 
-  Settings, Globe, BarChart2, Package, Tag, ClipboardList, Shield, Users
+  Settings, Globe, BarChart2, Package, Tag, ClipboardList, Shield, Users,
+  DollarSign, Sliders, History, Database, Truck
 } from 'lucide-react';
+import { AdminSettings } from './components/AdminSettings';
+import { AdminPayments } from './components/AdminPayments';
+import { AdminShipping } from './components/AdminShipping';
 
 const AppContent: React.FC = () => {
   const { 
@@ -23,11 +27,54 @@ const AppContent: React.FC = () => {
     adminSubTab, 
     setAdminSubTab, 
     setShowAuthModal, 
-    t 
+    t,
+    settings,
+    isPromoActive
   } = useApp();
+
+  const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  React.useEffect(() => {
+    if (!settings?.promoTimerEnabled || !settings?.promoTimerTo) return;
+
+    const calculateTimeLeft = () => {
+      const difference = +new Date(settings.promoTimerTo) - +new Date();
+      if (difference <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+      } else {
+        setTimeLeft({
+          days: Math.floor(difference / (1000 * 60 * 60 * 24)),
+          hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
+          minutes: Math.floor((difference / 1000 / 60) % 60),
+          seconds: Math.floor((difference / 1000) % 60)
+        });
+      }
+    };
+
+    calculateTimeLeft();
+    const interval = setInterval(calculateTimeLeft, 1000);
+
+    return () => clearInterval(interval);
+  }, [settings?.promoTimerTo, settings?.promoTimerEnabled]);
 
   return (
     <div className="min-h-screen bg-[#fafafa] text-gray-900 font-sans flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
+      
+      {/* Promo Countdown Banner */}
+      {isPromoActive() && settings && (
+        <div className="bg-gradient-to-r from-rose-600 via-amber-500 to-rose-600 text-white text-xs font-bold py-2.5 px-4 text-center flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 shadow-sm z-50">
+          <span className="flex items-center gap-1.5 animate-pulse">
+            <Tag size={14} className="rotate-90 text-yellow-300 fill-yellow-300" />
+            {language === 'ar' ? settings.promoTimerTextAr : settings.promoTimerTextEn}
+          </span>
+          <div className="flex items-center gap-1.5 font-mono text-sm tracking-tight bg-black/20 px-2.5 py-0.5 rounded-full border border-white/15">
+            <span className="text-yellow-200">{timeLeft.days}d</span>:
+            <span>{timeLeft.hours.toString().padStart(2, '0')}h</span>:
+            <span>{timeLeft.minutes.toString().padStart(2, '0')}m</span>:
+            <span className="text-red-200">{timeLeft.seconds.toString().padStart(2, '0')}s</span>
+          </div>
+        </div>
+      )}
       
       {/* 1. MAIN GLOBAL HEADER NAVIGATION */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 transition shadow-xs">
@@ -210,7 +257,77 @@ const AppContent: React.FC = () => {
                 }`}
               >
                 <Shield size={13} />
-                {t('adminUsers')}
+                {t('usersManagement')}
+              </button>
+            )}
+
+            {/* Activity Logs subtab (Admins only) */}
+            {user?.role === 'admin' && (
+              <button
+                id="admin-subtab-activity-logs"
+                onClick={() => setAdminSubTab('activity-logs')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                  adminSubTab === 'activity-logs' ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <History size={13} />
+                {t('activityLogs')}
+              </button>
+            )}
+
+            {/* Backup & Restore subtab (Admins only) */}
+            {user?.role === 'admin' && (
+              <button
+                id="admin-subtab-backup-restore"
+                onClick={() => setAdminSubTab('backup-restore')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                  adminSubTab === 'backup-restore' ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Database size={13} />
+                {t('backupRestore')}
+              </button>
+            )}
+
+            {/* Manage Payments subtab (Admins only) */}
+            {user?.role === 'admin' && (
+              <button
+                id="admin-subtab-payments"
+                onClick={() => setAdminSubTab('payments')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                  adminSubTab === 'payments' ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <DollarSign size={13} />
+                {language === 'ar' ? 'إدارة المدفوعات' : 'Payments'}
+              </button>
+            )}
+
+            {/* Settings subtab (Admins only) */}
+            {user?.role === 'admin' && (
+              <button
+                id="admin-subtab-settings"
+                onClick={() => setAdminSubTab('settings')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                  adminSubTab === 'settings' ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sliders size={13} />
+                {language === 'ar' ? 'الإعدادات' : 'Settings'}
+              </button>
+            )}
+
+            {/* Shipping Fees subtab (Admins only) */}
+            {user?.role === 'admin' && (
+              <button
+                id="admin-subtab-shipping"
+                onClick={() => setAdminSubTab('shipping')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition shrink-0 ${
+                  adminSubTab === 'shipping' ? 'bg-indigo-600 text-white shadow-md' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Truck size={13} />
+                {language === 'ar' ? 'رسوم الشحن' : 'Shipping Fees'}
               </button>
             )}
 
@@ -268,14 +385,18 @@ const AppContent: React.FC = () => {
         {activeTab === 'my-orders' && <MyOrders />}
         {activeTab === 'admin' && (
           <>
-            {adminSubTab === 'dashboard' ? <Dashboard /> : <AdminPanel />}
+            {adminSubTab === 'dashboard' && <Dashboard />}
+            {adminSubTab === 'settings' && <AdminSettings />}
+            {adminSubTab === 'payments' && <AdminPayments />}
+            {adminSubTab === 'shipping' && <AdminShipping />}
+            {adminSubTab !== 'dashboard' && adminSubTab !== 'settings' && adminSubTab !== 'payments' && adminSubTab !== 'shipping' && <AdminPanel />}
           </>
         )}
       </main>
 
       {/* 5. GLOBAL FOOTER */}
       <footer className="bg-white border-t border-gray-100 py-6 text-center text-xs text-gray-400 font-medium shrink-0">
-        <p>&copy; {new Date().getFullYear()} eMart Co. All Rights Reserved. Fully localized in English and Arabic.</p>
+        <p>Copyright &copy; {new Date().getFullYear()}. All Rights Reserved to ITSPARK</p>
       </footer>
 
       {/* Global Auth modal prompt */}

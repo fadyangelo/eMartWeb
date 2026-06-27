@@ -1,20 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Product, Category, Order, User, OrderStatus } from '../types';
+import { Product, Category, Order, User, OrderStatus, ActivityLog, BackupFile } from '../types';
 import { 
   Plus, Edit2, Trash2, Shield, UserCheck, Calendar, DollarSign, 
   Search, SlidersHorizontal, ChevronLeft, ChevronRight, CheckSquare, 
-  X, RefreshCw, Eye, ArrowRight, User as UserIcon, Lock
+  X, RefreshCw, Eye, ArrowRight, User as UserIcon, Lock,
+  History, Database, Download, Upload, AlertCircle, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
-  const { language, adminSubTab, setAdminSubTab, t, apiFetch, user } = useApp();
+  const { language, adminSubTab, setAdminSubTab, t, apiFetch, user, settings, fetchSettings, token } = useApp();
 
   // Core Lists
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [backupsList, setBackupsList] = useState<BackupFile[]>([]);
 
   // Filtering & Pagination
   const [search, setSearch] = useState('');
@@ -46,11 +49,15 @@ export const AdminPanel: React.FC = () => {
   const [prodStock, setProdStock] = useState('');
   const [prodImage, setProdImage] = useState('');
   const [prodTopSelling, setProdTopSelling] = useState(false);
+  const [prodEnabled, setProdEnabled] = useState(true);
+  const [prodDiscountPercent, setProdDiscountPercent] = useState('');
+  const [prodDiscountAmount, setProdDiscountAmount] = useState('');
 
   // Category Form
   const [catNameEn, setCatNameEn] = useState('');
   const [catNameAr, setCatNameAr] = useState('');
   const [catSlug, setCatSlug] = useState('');
+  const [catImage, setCatImage] = useState('');
 
   // User Form (Staff Add/Edit)
   const [staffName, setStaffName] = useState('');
@@ -63,6 +70,29 @@ export const AdminPanel: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // User Form Extended States
+  const [staffDisabled, setStaffDisabled] = useState(false);
+  const [staffPriceMultiplier, setStaffPriceMultiplier] = useState('1.0');
+  
+  // Granular Access Permissions
+  const [canSeeAllOrders, setCanSeeAllOrders] = useState(false);
+  const [canEditOrders, setCanEditOrders] = useState(false);
+  const [canEditOwnOrders, setCanEditOwnOrders] = useState(false);
+  const [canEditAllOrders, setCanEditAllOrders] = useState(false);
+  const [canEditOwnStatus, setCanEditOwnStatus] = useState(false);
+  const [canEditAllStatus, setCanEditAllStatus] = useState(false);
+  const [canDeleteOrders, setCanDeleteOrders] = useState(false);
+  const [canDeleteOwnOrders, setCanDeleteOwnOrders] = useState(false);
+  const [canDeleteAllOrders, setCanDeleteAllOrders] = useState(false);
+  const [canSeeReviewsPage, setCanSeeReviewsPage] = useState(false);
+  const [canViewFullDashboard, setCanViewFullDashboard] = useState(false);
+  const [canViewPaymentTerms, setCanViewPaymentTerms] = useState(false);
+  const [canAddPaymentTerms, setCanAddPaymentTerms] = useState(false);
+  const [canEditPaymentTerms, setCanEditPaymentTerms] = useState(false);
+  const [canDeletePaymentTerms, setCanDeletePaymentTerms] = useState(false);
+  const [canViewBackups, setCanViewBackups] = useState(false);
+  const [canManageBackups, setCanManageBackups] = useState(false);
 
   // Load Categories once
   useEffect(() => {
@@ -108,8 +138,15 @@ export const AdminPanel: React.FC = () => {
         setPage(res.pagination.currentPage);
       } 
       else if (adminSubTab === 'admin-users') {
-        query.set('role', 'manager'); // Default filters
-        const res = await apiFetch(`/api/admin/users?${query.toString()}`);
+        const queryUsers = new URLSearchParams({
+          search,
+          page: page.toString(),
+          limit: '8',
+        });
+        if (filterOption) {
+          queryUsers.set('role', filterOption);
+        }
+        const res = await apiFetch(`/api/admin/users?${queryUsers.toString()}`);
         setUsers(res.users);
         setTotalPages(res.pagination.totalPages);
         setPage(res.pagination.currentPage);
@@ -125,6 +162,31 @@ export const AdminPanel: React.FC = () => {
         setUsers(res.users);
         setTotalPages(res.pagination.totalPages);
         setPage(res.pagination.currentPage);
+      }
+      else if (adminSubTab === 'activity-logs') {
+        const queryLogs = new URLSearchParams({
+          search,
+          page: page.toString(),
+          limit: '10',
+        });
+        if (filterOption) {
+          queryLogs.set('action', filterOption);
+        }
+        const res = await apiFetch(`/api/admin/activity-logs?${queryLogs.toString()}`);
+        setActivityLogs(res.logs || []);
+        setTotalPages(res.pagination.totalPages || 1);
+        setPage(res.pagination.currentPage || 1);
+      }
+      else if (adminSubTab === 'backup-restore') {
+        const queryBackups = new URLSearchParams({
+          search,
+          page: page.toString(),
+          limit: '5',
+        });
+        const res = await apiFetch(`/api/admin/backups?${queryBackups.toString()}`);
+        setBackupsList(res.backups || []);
+        setTotalPages(res.pagination.totalPages || 1);
+        setPage(res.pagination.currentPage || 1);
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to load data');
@@ -154,6 +216,33 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, target: 'product' | 'category') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      try {
+        const base64data = reader.result as string;
+        const res = await apiFetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: base64data, name: file.name }),
+        });
+        if (res && res.url) {
+          if (target === 'product') {
+            setProdImage(res.url);
+          } else {
+            setCatImage(res.url);
+          }
+        }
+      } catch (err) {
+        console.error('Error uploading image:', err);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // ----------------------------------------------------
   // SUBMISSIONS & ACTIONS
   // ----------------------------------------------------
@@ -174,9 +263,12 @@ export const AdminPanel: React.FC = () => {
           setProdDescAr(p.descriptionAr);
           setProdPrice(p.price.toString());
           setProdCategory(p.categoryId);
-          setProdStock(p.stock.toString());
+          setProdStock(p.stock !== undefined && p.stock !== null ? p.stock.toString() : '');
           setProdImage(p.imageUrl);
           setProdTopSelling(!!p.topSelling);
+          setProdEnabled(p.enabled !== false);
+          setProdDiscountPercent(p.discountPercent !== undefined && p.discountPercent !== null ? p.discountPercent.toString() : '');
+          setProdDiscountAmount(p.discountAmount !== undefined && p.discountAmount !== null ? p.discountAmount.toString() : '');
         }
       } else {
         setProdNameEn('');
@@ -188,6 +280,9 @@ export const AdminPanel: React.FC = () => {
         setProdStock('');
         setProdImage('');
         setProdTopSelling(false);
+        setProdEnabled(true);
+        setProdDiscountPercent('');
+        setProdDiscountAmount('');
       }
     } 
     else if (type === 'category') {
@@ -197,11 +292,13 @@ export const AdminPanel: React.FC = () => {
           setCatNameEn(c.nameEn);
           setCatNameAr(c.nameAr);
           setCatSlug(c.slug);
+          setCatImage(c.imageUrl || '');
         }
       } else {
         setCatNameEn('');
         setCatNameAr('');
         setCatSlug('');
+        setCatImage('');
       }
     } 
     else if (type === 'user') {
@@ -210,9 +307,28 @@ export const AdminPanel: React.FC = () => {
         if (u) {
           setStaffName(u.name);
           setStaffEmail(u.email);
-          setStaffPassword('');
-          setStaffRole(u.role as 'admin' | 'manager');
+          setStaffPassword(u.password || '');
+          setStaffRole(u.role as any);
           setStaffPermissions(u.permissions || []);
+          setStaffDisabled(u.disabled || false);
+          setStaffPriceMultiplier(String(u.priceMultiplier !== undefined ? u.priceMultiplier : '1.0'));
+          setCanSeeAllOrders(u.canSeeAllOrders || false);
+          setCanEditOrders(u.canEditOrders || false);
+          setCanEditOwnOrders(u.canEditOwnOrders || false);
+          setCanEditAllOrders(u.canEditAllOrders || false);
+          setCanEditOwnStatus(u.canEditOwnStatus || false);
+          setCanEditAllStatus(u.canEditAllStatus || false);
+          setCanDeleteOrders(u.canDeleteOrders || false);
+          setCanDeleteOwnOrders(u.canDeleteOwnOrders || false);
+          setCanDeleteAllOrders(u.canDeleteAllOrders || false);
+          setCanSeeReviewsPage(u.canSeeReviewsPage || false);
+          setCanViewFullDashboard(u.canViewFullDashboard || false);
+          setCanViewPaymentTerms(u.canViewPaymentTerms || false);
+          setCanAddPaymentTerms(u.canAddPaymentTerms || false);
+          setCanEditPaymentTerms(u.canEditPaymentTerms || false);
+          setCanDeletePaymentTerms(u.canDeletePaymentTerms || false);
+          setCanViewBackups(u.canViewBackups || false);
+          setCanManageBackups(u.canManageBackups || false);
         }
       } else {
         setStaffName('');
@@ -220,6 +336,25 @@ export const AdminPanel: React.FC = () => {
         setStaffPassword('');
         setStaffRole('manager');
         setStaffPermissions([]);
+        setStaffDisabled(false);
+        setStaffPriceMultiplier('1.0');
+        setCanSeeAllOrders(false);
+        setCanEditOrders(false);
+        setCanEditOwnOrders(false);
+        setCanEditAllOrders(false);
+        setCanEditOwnStatus(false);
+        setCanEditAllStatus(false);
+        setCanDeleteOrders(false);
+        setCanDeleteOwnOrders(false);
+        setCanDeleteAllOrders(false);
+        setCanSeeReviewsPage(false);
+        setCanViewFullDashboard(false);
+        setCanViewPaymentTerms(false);
+        setCanAddPaymentTerms(false);
+        setCanEditPaymentTerms(false);
+        setCanDeletePaymentTerms(false);
+        setCanViewBackups(false);
+        setCanManageBackups(false);
       }
     }
   };
@@ -248,6 +383,9 @@ export const AdminPanel: React.FC = () => {
           stock: prodStock,
           imageUrl: prodImage,
           topSelling: prodTopSelling,
+          enabled: prodEnabled,
+          discountPercent: prodDiscountPercent,
+          discountAmount: prodDiscountAmount,
         };
 
         if (editingId) {
@@ -259,7 +397,7 @@ export const AdminPanel: React.FC = () => {
         }
       } 
       else if (formType === 'category') {
-        const body = { nameEn: catNameEn, nameAr: catNameAr, slug: catSlug || catNameEn };
+        const body = { nameEn: catNameEn, nameAr: catNameAr, slug: catSlug || catNameEn, imageUrl: catImage };
         if (editingId) {
           await apiFetch(`/api/categories/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
           showToast('Category updated successfully!');
@@ -275,14 +413,33 @@ export const AdminPanel: React.FC = () => {
           password: staffPassword,
           role: staffRole,
           permissions: staffPermissions,
+          disabled: staffDisabled,
+          priceMultiplier: Number(staffPriceMultiplier),
+          canSeeAllOrders,
+          canEditOrders,
+          canEditOwnOrders,
+          canEditAllOrders,
+          canEditOwnStatus,
+          canEditAllStatus,
+          canDeleteOrders,
+          canDeleteOwnOrders,
+          canDeleteAllOrders,
+          canSeeReviewsPage,
+          canViewFullDashboard,
+          canViewPaymentTerms,
+          canAddPaymentTerms,
+          canEditPaymentTerms,
+          canDeletePaymentTerms,
+          canViewBackups,
+          canManageBackups,
         };
 
         if (editingId) {
           await apiFetch(`/api/admin/users/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
-          showToast('Staff member updated successfully!');
+          showToast('User updated successfully!');
         } else {
           await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
-          showToast('Staff member created successfully!');
+          showToast('User created successfully!');
         }
       }
 
@@ -346,6 +503,104 @@ export const AdminPanel: React.FC = () => {
     } catch (err: any) {
       showToast(err.message || 'Failed to load customer details', false);
     }
+  };
+
+  // Backup and Restore Actions
+  const handleCreateBackup = async () => {
+    try {
+      setActionLoading(true);
+      await apiFetch('/api/admin/backups', {
+        method: 'POST',
+        body: JSON.stringify({ isAutomatic: false }),
+      });
+      showToast(language === 'ar' ? 'تم إنشاء نسخة احتياطية بنجاح' : 'Backup file created successfully!');
+      fetchData();
+    } catch (err: any) {
+      showToast(err.message || 'Backup failed', false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestoreBackup = async (filename: string) => {
+    if (!window.confirm(language === 'ar' ? `هل أنت متأكد من استعادة النسخة الاحتياطية "${filename}"؟ سيؤدي ذلك لاستبدال قاعدة البيانات الحالية.` : `Are you sure you want to restore "${filename}"? This will completely overwrite the active database.`)) return;
+    try {
+      setActionLoading(true);
+      await apiFetch('/api/admin/backups/restore', {
+        method: 'POST',
+        body: JSON.stringify({ filename }),
+      });
+      showToast(language === 'ar' ? 'تمت استعادة البيانات بنجاح' : 'Database restored successfully!');
+      fetchData();
+    } catch (err: any) {
+      showToast(err.message || 'Restore failed', false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteBackup = async (filename: string) => {
+    if (!window.confirm(language === 'ar' ? `هل أنت متأكد من حذف ملف النسخة الاحتياطية "${filename}"؟` : `Are you sure you want to delete backup file "${filename}"?`)) return;
+    try {
+      setActionLoading(true);
+      await apiFetch(`/api/admin/backups/${filename}`, {
+        method: 'DELETE',
+      });
+      showToast(language === 'ar' ? 'تم حذف الملف بنجاح' : 'Backup file deleted successfully!');
+      fetchData();
+    } catch (err: any) {
+      showToast(err.message || 'Delete failed', false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDownloadBackup = async (filename: string) => {
+    try {
+      const res = await fetch(`/api/admin/backups/download/${filename}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err: any) {
+      showToast(err.message || 'Download failed', false);
+    }
+  };
+
+  const handleUploadBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        setActionLoading(true);
+        const content = reader.result as string;
+        // Validate JSON syntax locally
+        JSON.parse(content);
+        
+        await apiFetch('/api/admin/backups/upload', {
+          method: 'POST',
+          body: JSON.stringify({ filename: file.name, content }),
+        });
+        showToast(language === 'ar' ? 'تم رفع نسخة احتياطية واستيرادها بنجاح' : 'Backup file uploaded and registered successfully!');
+        fetchData();
+      } catch (err: any) {
+        showToast(language === 'ar' ? 'ملف JSON غير صالح أو خطأ بالرفع' : `Invalid JSON structure or upload error: ${err.message}`, false);
+      } finally {
+        setActionLoading(false);
+      }
+    };
+    reader.readAsText(file);
   };
 
   const getStatusColor = (status: OrderStatus) => {
@@ -430,12 +685,45 @@ export const AdminPanel: React.FC = () => {
             </select>
           )}
 
+          {adminSubTab === 'admin-users' && (
+            <select
+              id="admin-user-role-filter"
+              value={filterOption}
+              onChange={e => { setFilterOption(e.target.value); setPage(1); }}
+              className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700"
+            >
+              <option value="">{language === 'ar' ? 'جميع الأدوار' : 'All Roles'}</option>
+              <option value="admin">{language === 'ar' ? 'مدير عام (Admin)' : 'Admin'}</option>
+              <option value="manager">{language === 'ar' ? 'مدير (Manager)' : 'Manager'}</option>
+              <option value="staff">{language === 'ar' ? 'موظف (Staff)' : 'Staff'}</option>
+              <option value="customer">{language === 'ar' ? 'عميل (Customer)' : 'Customer'}</option>
+            </select>
+          )}
+
+          {adminSubTab === 'activity-logs' && (
+            <select
+              id="admin-log-action-filter"
+              value={filterOption}
+              onChange={e => { setFilterOption(e.target.value); setPage(1); }}
+              className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700"
+            >
+              <option value="">{language === 'ar' ? 'جميع الأنشطة' : 'All Actions'}</option>
+              <option value="LOGIN">{language === 'ar' ? 'تسجيل دخول (LOGIN)' : 'LOGIN'}</option>
+              <option value="USER_CREATED">{language === 'ar' ? 'إنشاء مستخدم (USER_CREATED)' : 'USER_CREATED'}</option>
+              <option value="USER_UPDATED">{language === 'ar' ? 'تعديل مستخدم (USER_UPDATED)' : 'USER_UPDATED'}</option>
+              <option value="BACKUP_CREATED">{language === 'ar' ? 'إنشاء نسخة احتياطية' : 'BACKUP_CREATED'}</option>
+              <option value="BACKUP_RESTORED">{language === 'ar' ? 'استعادة نسخة احتياطية' : 'BACKUP_RESTORED'}</option>
+              <option value="BACKUP_DELETED">{language === 'ar' ? 'حذف نسخة احتياطية' : 'BACKUP_DELETED'}</option>
+              <option value="BACKUP_UPLOADED">{language === 'ar' ? 'رفع نسخة احتياطية' : 'BACKUP_UPLOADED'}</option>
+            </select>
+          )}
+
           {/* Add New Trigger buttons */}
           {adminSubTab === 'products' && (
             <button
               id="add-product-btn"
               onClick={() => openForm('product')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
               <Plus size={14} />
               Add Product
@@ -445,7 +733,7 @@ export const AdminPanel: React.FC = () => {
             <button
               id="add-category-btn"
               onClick={() => openForm('category')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
               <Plus size={14} />
               Add Category
@@ -455,10 +743,10 @@ export const AdminPanel: React.FC = () => {
             <button
               id="add-staff-btn"
               onClick={() => openForm('user')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs"
+              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             >
               <Plus size={14} />
-              Add Staff User
+              {language === 'ar' ? 'إضافة مستخدم جديد' : 'Add New User'}
             </button>
           )}
         </div>
@@ -495,18 +783,46 @@ export const AdminPanel: React.FC = () => {
                       </td>
                       <td className="py-4 px-5 font-semibold text-gray-800">
                         <div>
-                          <p>{p.nameEn}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{language === 'ar' ? p.nameAr : p.nameEn}</span>
+                            {p.enabled === false ? (
+                              <span className="bg-rose-50 text-rose-600 text-[9px] font-bold px-1.5 py-0.5 rounded-sm">Disabled</span>
+                            ) : (
+                              <span className="bg-emerald-50 text-emerald-600 text-[9px] font-bold px-1.5 py-0.5 rounded-sm">Active</span>
+                            )}
+                          </div>
                           <p className="text-[10px] text-gray-400 font-mono font-medium">#{p.id}</p>
                         </div>
                       </td>
                       <td className="py-4 px-5 font-medium text-gray-500">
                         {categories.find(c => c.id === p.categoryId)?.nameEn || 'Unassigned'}
                       </td>
-                      <td className="py-4 px-5 font-bold">${p.price.toFixed(2)}</td>
                       <td className="py-4 px-5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${p.stock <= 5 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-700'}`}>
-                          {p.stock} units
-                        </span>
+                        <div className="font-bold text-gray-800">{p.price.toFixed(2)} {settings?.currency || 'USD'}</div>
+                        {((p.discountPercent && p.discountPercent > 0) || (p.discountAmount && p.discountAmount > 0)) && (
+                          <div className="text-[9px] text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md inline-block font-semibold mt-1">
+                            {p.discountPercent && p.discountPercent > 0 ? `-${p.discountPercent}%` : `-${p.discountAmount} ${settings?.currency || 'USD'}`}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-5">
+                        {p.stock === undefined || p.stock === null || (p.stock as any) === '' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">
+                            Unlimited / ∞
+                          </span>
+                        ) : Number(p.stock) === 0 ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                            Out of Stock
+                          </span>
+                        ) : Number(p.stock) < 10 ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 animate-pulse">
+                            Low Stock: {p.stock} left
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700">
+                            {p.stock} units
+                          </span>
+                        )}
                       </td>
                       <td className="py-4 px-5 text-right shrink-0">
                         <div className="flex justify-end gap-2">
@@ -630,16 +946,16 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
-          {/* ADMIN STAFF LIST */}
+          {/* ADMIN STAFF / USER MANAGEMENT LIST */}
           {adminSubTab === 'admin-users' && (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
-                    <th className="py-3.5 px-5">Staff Member</th>
-                    <th className="py-3.5 px-5">Role</th>
-                    <th className="py-3.5 px-5">Permissions Assigned</th>
-                    <th className="py-3.5 px-5 text-right">Actions</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'المستخدم' : 'User Member'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'مضاعف السعر' : 'Price Multiplier'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'الصلاحيات / التفاصيل' : 'Permissions & Overrides'}</th>
+                    <th className="py-3.5 px-5 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -647,43 +963,104 @@ export const AdminPanel: React.FC = () => {
                     <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50/20 transition text-sm text-gray-700">
                       <td className="py-4 px-5 font-semibold text-gray-800">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full shrink-0">
+                          <div className={`p-2 rounded-full shrink-0 ${u.role === 'admin' ? 'bg-red-50 text-red-700' : u.role === 'manager' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700'}`}>
                             <Shield size={16} />
                           </div>
                           <div>
-                            <p>{u.name}</p>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold">{u.name}</p>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${u.role === 'admin' ? 'bg-red-50 text-red-700 border-red-200' : u.role === 'manager' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                {u.role}
+                              </span>
+                            </div>
                             <p className="text-xs text-gray-400 font-medium">{u.email}</p>
+                            {u.password && (
+                              <p className="text-[10px] text-amber-600 font-bold font-mono">
+                                {language === 'ar' ? 'كلمة المرور: ' : 'Password: '}
+                                <span className="bg-amber-50 px-1 py-0.5 rounded border border-amber-200">{u.password}</span>
+                              </p>
+                            )}
+                            <p className="text-[10px] text-gray-400 font-medium font-mono">{language === 'ar' ? 'انضم في: ' : 'Joined: '}{new Date(u.createdAt).toLocaleDateString()}</p>
                           </div>
                         </div>
                       </td>
                       <td className="py-4 px-5">
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-black uppercase border ${u.role === 'admin' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                          {u.role}
+                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold font-mono ${!u.priceMultiplier || u.priceMultiplier === 1 ? 'bg-gray-100 text-gray-600' : u.priceMultiplier < 1 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+                          {u.priceMultiplier !== undefined ? `${u.priceMultiplier}x` : '1.0x'}
                         </span>
                       </td>
                       <td className="py-4 px-5">
                         <div className="flex flex-wrap gap-1 max-w-md">
                           {u.role === 'admin' ? (
-                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Full Privileges</span>
+                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Full Admin Override</span>
                           ) : (
-                            u.permissions?.map((p, idx) => (
-                              <span key={idx} className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
-                                {p.replace('manage_', '')}
-                              </span>
-                            ))
+                            <>
+                              {u.permissions?.map((p, idx) => (
+                                <span key={idx} className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
+                                  {p.replace('manage_', '')}
+                                </span>
+                              ))}
+                              {u.canSeeAllOrders && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md">See Orders</span>}
+                              {u.canEditOrders && <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-md">Edit Orders</span>}
+                              {u.canDeleteOrders && <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md">Delete Orders</span>}
+                              {u.canManageBackups && <span className="text-[10px] font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded-md">Manage Backups</span>}
+                            </>
                           )}
                         </div>
                       </td>
                       <td className="py-4 px-5 text-right">
-                        {u.id !== 'u-1' && (
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                          {u.id !== 'u-1' && (
+                            <button
+                              id={`toggle-disable-btn-${u.id}`}
+                              onClick={async () => {
+                                if (!window.confirm(u.disabled ? 'Enable this user?' : 'Disable this user? This will block their active session immediately.')) return;
+                                try {
+                                  setActionLoading(true);
+                                  await apiFetch(`/api/admin/users/${u.id}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ disabled: !u.disabled }),
+                                  });
+                                  showToast(u.disabled ? 'Account enabled successfully' : 'Account disabled successfully');
+                                  fetchData();
+                                } catch (err: any) {
+                                  showToast(err.message || 'Operation failed', false);
+                                } finally {
+                                  setActionLoading(false);
+                                }
+                              }}
+                              className={`text-[10px] font-bold px-2 py-1 rounded-full border transition cursor-pointer ${
+                                u.disabled 
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                              }`}
+                            >
+                              {u.disabled ? (language === 'ar' ? 'موقف (تفعيل)' : 'Disabled') : (language === 'ar' ? 'نشط (تعطيل)' : 'Enabled')}
+                            </button>
+                          )}
+                          
+                          {/* Audit Orders button for all users */}
                           <button
-                            id={`edit-staff-btn-${u.id}`}
-                            onClick={() => openForm('user', u.id)}
-                            className="p-1.5 bg-gray-50 text-gray-500 hover:text-emerald-600 rounded-md hover:bg-emerald-50 transition inline-block"
+                            id={`audit-user-orders-${u.id}`}
+                            onClick={() => viewCustomerOrders(u)}
+                            className="p-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md transition inline-block cursor-pointer"
+                            title={language === 'ar' ? 'معاينة الطلبات' : 'Audit Orders'}
                           >
-                            <Edit2 size={14} />
+                            <Eye size={14} />
                           </button>
-                        )}
+
+                          {u.id !== 'u-1' && (
+                            <button
+                              id={`edit-staff-btn-${u.id}`}
+                              onClick={() => openForm('user', u.id)}
+                              className="p-1.5 bg-gray-50 text-gray-500 hover:text-emerald-600 rounded-md hover:bg-emerald-50 transition inline-block cursor-pointer"
+                              title={language === 'ar' ? 'تعديل' : 'Edit Details'}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -721,19 +1098,250 @@ export const AdminPanel: React.FC = () => {
                         {new Date(u.createdAt).toLocaleDateString()}
                       </td>
                       <td className="py-4 px-5 text-right">
-                        <button
-                          id={`view-cust-orders-${u.id}`}
-                          onClick={() => viewCustomerOrders(u)}
-                          className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-1.5 px-3 rounded-lg ml-auto transition"
-                        >
-                          <Eye size={12} />
-                          Audit Orders
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            id={`toggle-disable-cust-${u.id}`}
+                            onClick={async () => {
+                              if (!window.confirm(u.disabled ? 'Enable this customer?' : 'Disable this customer? This will block their active session immediately.')) return;
+                              try {
+                                setActionLoading(true);
+                                await apiFetch(`/api/admin/users/${u.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ disabled: !u.disabled }),
+                                });
+                                showToast(u.disabled ? 'Customer account enabled successfully' : 'Customer account disabled successfully');
+                                fetchData();
+                              } catch (err: any) {
+                                showToast(err.message || 'Operation failed', false);
+                              } finally {
+                                setActionLoading(false);
+                              }
+                            }}
+                            className={`text-[10px] font-bold px-2 py-1 rounded-full border transition cursor-pointer ${
+                              u.disabled 
+                                ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' 
+                                : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {u.disabled ? (language === 'ar' ? 'موقف (تفعيل)' : 'Disabled') : (language === 'ar' ? 'نشط (تعطيل)' : 'Enabled')}
+                          </button>
+                          <button
+                            id={`view-cust-orders-${u.id}`}
+                            onClick={() => viewCustomerOrders(u)}
+                            className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold py-1.5 px-3 rounded-lg transition cursor-pointer"
+                          >
+                            <Eye size={12} />
+                            {language === 'ar' ? 'معاينة الطلبات' : 'Audit Orders'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ACTIVITY LOGS LIST */}
+          {adminSubTab === 'activity-logs' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'التاريخ والوقت' : 'Timestamp'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'النشاط' : 'Action'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'بواسطة' : 'User / Operator'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'التفاصيل' : 'Details'}</th>
+                    <th className="py-3.5 px-5">{language === 'ar' ? 'العنوان والبيانات' : 'Metadata (IP & User Agent)'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activityLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-10 text-center text-gray-400 font-semibold">
+                        {language === 'ar' ? 'لا توجد سجلات نشاط مطابقة' : 'No activity logs match your filters.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    activityLogs.map(log => (
+                      <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50/10 transition text-xs text-gray-700">
+                        <td className="py-3 px-5 font-mono text-gray-500 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString()}
+                        </td>
+                        <td className="py-3 px-5">
+                          <span className={`px-2 py-0.5 rounded-md font-bold font-mono text-[10px] ${
+                            log.action === 'LOGIN' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                            log.action.includes('CREATED') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                            log.action.includes('RESTORE') ? 'bg-purple-50 text-purple-700 border border-purple-100' :
+                            log.action.includes('DELETED') ? 'bg-rose-50 text-rose-700 border border-rose-100' :
+                            'bg-amber-50 text-amber-700 border border-amber-100'
+                          }`}>
+                            {log.action}
+                          </span>
+                        </td>
+                        <td className="py-3 px-5 whitespace-nowrap">
+                          <p className="font-bold text-gray-800">{log.userEmail}</p>
+                          <p className="text-[10px] text-gray-400 uppercase font-black">{log.userRole}</p>
+                        </td>
+                        <td className="py-3 px-5 max-w-xs truncate font-medium" title={log.details}>
+                          {log.details}
+                        </td>
+                        <td className="py-3 px-5">
+                          <div className="text-[10px] text-gray-400 space-y-0.5">
+                            <p><span className="font-bold">IP:</span> {log.ipAddress}</p>
+                            <p className="max-w-[200px] truncate" title={log.userAgent}><span className="font-bold">Agent:</span> {log.userAgent}</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* BACKUP & RESTORE TAB */}
+          {adminSubTab === 'backup-restore' && (
+            <div className="p-6 space-y-6">
+              
+              {/* Top info and controllers section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                
+                {/* Panel 1: Create Backup Card */}
+                <div className="bg-slate-50 border border-slate-200/60 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                      <Database size={16} className="text-indigo-600" />
+                      <span>{language === 'ar' ? 'إنشاء نسخة احتياطية جديدة' : 'Generate New Backup'}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-2 font-medium leading-relaxed">
+                      {language === 'ar' ? 'قم بإنشاء نسخة احتياطية فورية لقاعدة البيانات وحفظها بأمان على السيرفر لتتمكن من استعادتها في أي وقت.' : 'Take an instant backup of the current state of the database. Backups are saved securely on the server and can be restored with a single click.'}
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      id="create-manual-backup-btn"
+                      onClick={handleCreateBackup}
+                      disabled={actionLoading}
+                      className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Database size={14} />
+                      {actionLoading ? (language === 'ar' ? 'جاري الحفظ...' : 'Creating...') : (language === 'ar' ? 'إنشاء نسخة احتياطية الآن' : 'Create Backup Now')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Panel 2: Upload Backup File Card */}
+                <div className="bg-emerald-50/30 border border-emerald-100 p-5 rounded-2xl flex flex-col justify-between space-y-4">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-emerald-800 flex items-center gap-2">
+                      <Upload size={16} className="text-emerald-600" />
+                      <span>{language === 'ar' ? 'رفع نسخة احتياطية (ملف JSON)' : 'Upload Backup File'}</span>
+                    </h3>
+                    <p className="text-xs text-emerald-600/80 mt-2 font-medium leading-relaxed">
+                      {language === 'ar' ? 'هل تمتلك ملف نسخة احتياطية مخزن محلياً؟ قم برفعه لاستيراد البيانات مباشرة إلى الموقع.' : 'Restore database from a previously downloaded JSON backup file. Select or drag a valid JSON backup file here to import it immediately.'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-md cursor-pointer justify-center w-full sm:w-auto">
+                      <Upload size={14} />
+                      <span>{language === 'ar' ? 'اختر ملف JSON للرفع' : 'Choose JSON Backup File'}</span>
+                      <input
+                        id="upload-backup-file-input"
+                        type="file"
+                        accept=".json"
+                        onChange={handleUploadBackupFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Backups Files Table */}
+              <div className="space-y-3 text-left">
+                <h3 className="text-xs font-extrabold text-gray-400 uppercase tracking-wider">
+                  {language === 'ar' ? 'ملفات النسخ الاحتياطية المتوفرة على السيرفر' : 'Available Server Backups'}
+                </h3>
+                
+                <div className="border border-gray-100 rounded-2xl overflow-hidden bg-white">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/50 text-xs text-gray-400 uppercase font-semibold">
+                        <th className="py-3 px-4">{language === 'ar' ? 'اسم الملف' : 'Backup File Name'}</th>
+                        <th className="py-3 px-4">{language === 'ar' ? 'الحجم' : 'File Size'}</th>
+                        <th className="py-3 px-4">{language === 'ar' ? 'النوع' : 'Type'}</th>
+                        <th className="py-3 px-4">{language === 'ar' ? 'تاريخ الإنشاء' : 'Created At'}</th>
+                        <th className="py-3 px-4 text-right">{language === 'ar' ? 'الإجراءات' : 'Actions'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {backupsList.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-gray-400 font-semibold">
+                            {language === 'ar' ? 'لا توجد نسخ احتياطية مسجلة حالياً' : 'No backups registered. Click "Create Backup Now" to generate one.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        backupsList.map(bk => (
+                          <tr key={bk.filename} className="border-b border-gray-50 hover:bg-gray-50/20 transition text-xs text-gray-700">
+                            <td className="py-3 px-4 font-mono font-bold text-gray-900 truncate max-w-xs" title={bk.filename}>
+                              {bk.filename}
+                            </td>
+                            <td className="py-3 px-4 font-semibold font-mono text-gray-500">
+                              {bk.size !== undefined ? (bk.size / 1024).toFixed(2) + ' KB' : 'Unknown'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${bk.isAutomatic ? 'bg-slate-100 text-slate-600 border' : 'bg-indigo-50 text-indigo-700 border border-indigo-100'}`}>
+                                {bk.isAutomatic ? (language === 'ar' ? 'تلقائي' : 'AUTOMATIC') : (language === 'ar' ? 'يدوي' : 'MANUAL')}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-medium text-gray-400">
+                              {new Date(bk.createdAt).toLocaleDateString()} {new Date(bk.createdAt).toLocaleTimeString()}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  id={`restore-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                  onClick={() => handleRestoreBackup(bk.filename)}
+                                  disabled={actionLoading}
+                                  className="flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold px-2.5 py-1.5 rounded-lg transition text-[10px] cursor-pointer"
+                                  title={language === 'ar' ? 'استعادة قاعدة البيانات' : 'Restore database state'}
+                                >
+                                  <RefreshCw size={11} className="animate-pulse" />
+                                  <span>{language === 'ar' ? 'استعادة' : 'Restore'}</span>
+                                </button>
+                                
+                                <button
+                                  id={`download-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                  onClick={() => handleDownloadBackup(bk.filename)}
+                                  className="p-1.5 bg-gray-50 text-gray-500 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                                  title={language === 'ar' ? 'تحميل' : 'Download file'}
+                                >
+                                  <Download size={13} />
+                                </button>
+
+                                <button
+                                  id={`delete-bk-btn-${bk.filename.replace(/\./g, '-')}`}
+                                  onClick={() => handleDeleteBackup(bk.filename)}
+                                  disabled={actionLoading}
+                                  className="p-1.5 bg-gray-50 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                                  title={language === 'ar' ? 'حذف' : 'Delete file'}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -823,7 +1431,7 @@ export const AdminPanel: React.FC = () => {
 
                   <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
-                      <label className="block">Price ($)</label>
+                      <label className="block">Price ({settings?.currency || 'USD'})</label>
                       <input id="prod-price-input" required type="number" step="0.01" value={prodPrice} onChange={e => setProdPrice(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
                     </div>
                     <div className="space-y-1">
@@ -834,19 +1442,61 @@ export const AdminPanel: React.FC = () => {
                     </div>
                     <div className="space-y-1">
                       <label className="block">Stock Level</label>
-                      <input id="prod-stock-input" required type="number" value={prodStock} onChange={e => setProdStock(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
+                      <input id="prod-stock-input" type="number" placeholder="Unlimited" value={prodStock} onChange={e => setProdStock(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-3 rounded-2xl border border-gray-100 space-y-3">
+                    <h4 className="font-bold text-gray-800 text-[11px] uppercase tracking-wider">Promotional Discount Options</h4>
+                    <p className="text-[10px] text-gray-400">These will be automatically applied whenever a storewide promotional campaign is active.</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="block font-medium text-gray-600">Discount Percentage (%)</label>
+                        <input id="prod-discount-percent-input" type="number" placeholder="e.g. 15" value={prodDiscountPercent} onChange={e => setProdDiscountPercent(e.target.value)} className="w-full border rounded-lg p-2 text-xs bg-white" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block font-medium text-gray-600">Discount Amount ({settings?.currency || 'USD'})</label>
+                        <input id="prod-discount-amount-input" type="number" placeholder="e.g. 50" value={prodDiscountAmount} onChange={e => setProdDiscountAmount(e.target.value)} className="w-full border rounded-lg p-2 text-xs bg-white" />
+                      </div>
                     </div>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block">Image URL</label>
-                    <input id="prod-img-input" type="text" value={prodImage} onChange={e => setProdImage(e.target.value)} placeholder="https://unsplash..." className="w-full border rounded-lg p-2 text-xs" />
+                    <label className="block text-xs font-bold text-gray-700">Product Image</label>
+                    <div className="flex items-center gap-3">
+                      {prodImage && (
+                        <img src={prodImage} alt="Product Preview" className="w-12 h-12 object-cover rounded-xl border border-gray-100" />
+                      )}
+                      <div className="flex-1">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleImageUpload(e, 'product')}
+                          className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                        />
+                        <input 
+                          id="prod-img-input" 
+                          type="text" 
+                          value={prodImage} 
+                          onChange={e => setProdImage(e.target.value)} 
+                          placeholder="Or paste an image URL..." 
+                          className="w-full border rounded-lg p-2 text-xs mt-1" 
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <label className="flex items-center gap-2 cursor-pointer font-semibold py-1">
-                    <input id="prod-best-seller-input" type="checkbox" checked={prodTopSelling} onChange={e => setProdTopSelling(e.target.checked)} className="rounded-sm text-emerald-600 focus:ring-emerald-500" />
-                    <span>Promote as Best Seller (Top Selling)</span>
-                  </label>
+                  <div className="flex flex-col gap-2 py-1 bg-gray-50/50 p-3 rounded-2xl border border-gray-100/50">
+                    <label className="flex items-center gap-2 cursor-pointer font-semibold">
+                      <input id="prod-best-seller-input" type="checkbox" checked={prodTopSelling} onChange={e => setProdTopSelling(e.target.checked)} className="rounded-sm text-emerald-600 focus:ring-emerald-500" />
+                      <span>Promote as Best Seller (Top Selling)</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer font-semibold">
+                      <input id="prod-enabled-input" type="checkbox" checked={prodEnabled} onChange={e => setProdEnabled(e.target.checked)} className="rounded-sm text-emerald-600 focus:ring-emerald-500" />
+                      <span className="text-gray-800">Enabled (Visible in store by default)</span>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -867,55 +1517,183 @@ export const AdminPanel: React.FC = () => {
                     <label className="block">Slug Identifier</label>
                     <input id="cat-slug-input" required type="text" value={catSlug} onChange={e => setCatSlug(e.target.value)} placeholder="e.g. fashion-wear" className="w-full border rounded-lg p-2 text-xs" />
                   </div>
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-gray-700">Category Image</label>
+                    <div className="flex items-center gap-3">
+                      {catImage && (
+                        <img src={catImage} alt="Category Preview" className="w-12 h-12 object-cover rounded-xl border border-gray-100" />
+                      )}
+                      <div className="flex-1">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleImageUpload(e, 'category')}
+                          className="w-full text-xs text-gray-500 file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                        />
+                        <input 
+                          id="cat-img-input" 
+                          type="text" 
+                          value={catImage} 
+                          onChange={e => setCatImage(e.target.value)} 
+                          placeholder="Or paste an image URL..." 
+                          className="w-full border rounded-lg p-2 text-xs mt-1" 
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* 3. STAFF / USER FIELDS */}
               {formType === 'user' && (
-                <div className="space-y-4 text-xs font-medium text-gray-700">
-                  <div className="space-y-1">
-                    <label className="block">Staff Full Name</label>
-                    <input id="staff-name-input" required type="text" value={staffName} onChange={e => setStaffName(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block">Email Address</label>
-                    <input id="staff-email-input" required type="email" value={staffEmail} onChange={e => setStaffEmail(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="block">{editingId ? 'New Password (Optional)' : 'Password'}</label>
-                    <input id="staff-password-input" required={!editingId} type="password" value={staffPassword} onChange={e => setStaffPassword(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
+                <div className="space-y-4 text-xs font-medium text-gray-700 text-left">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="block font-bold text-gray-700">{language === 'ar' ? 'الاسم الكامل' : 'Full Name'}</label>
+                      <input id="staff-name-input" required type="text" value={staffName} onChange={e => setStaffName(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block font-bold text-gray-700">{language === 'ar' ? 'البريد الإلكتروني' : 'Email Address'}</label>
+                      <input id="staff-email-input" required type="email" value={staffEmail} onChange={e => setStaffEmail(e.target.value)} className="w-full border rounded-lg p-2 text-xs font-mono" />
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="block">Role Type</label>
-                    <select id="staff-role-select" value={staffRole} onChange={e => setStaffRole(e.target.value as 'admin' | 'manager')} className="w-full border rounded-lg p-2 text-xs bg-white">
-                      <option value="manager">Manager (Restricted Access)</option>
-                      <option value="admin">Admin (Full Privilege Override)</option>
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="block font-bold text-gray-700">{editingId ? (language === 'ar' ? 'كلمة المرور الجديدة (اختياري)' : 'New Password (Optional)') : (language === 'ar' ? 'كلمة المرور' : 'Password')}</label>
+                      <input id="staff-password-input" required={!editingId} type="password" value={staffPassword} onChange={e => setStaffPassword(e.target.value)} className="w-full border rounded-lg p-2 text-xs" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block font-bold text-gray-700">{language === 'ar' ? 'صلاحية الدور الرئيسية' : 'Primary Role Type'}</label>
+                      <select id="staff-role-select" value={staffRole} onChange={e => setStaffRole(e.target.value as any)} className="w-full border rounded-lg p-2 text-xs bg-white font-bold">
+                        <option value="staff">{language === 'ar' ? 'موظف (Staff)' : 'Staff Member (Custom Rights)'}</option>
+                        <option value="admin">{language === 'ar' ? 'مدير عام (Admin)' : 'Admin (Full privileges override)'}</option>
+                        <option value="customer">{language === 'ar' ? 'عميل (Customer)' : 'Customer (Standard purchaser)'}</option>
+                      </select>
+                    </div>
                   </div>
 
-                  {/* Permissions checkboxes (Only shown/editable if manager) */}
-                  {staffRole === 'manager' && (
-                    <div className="space-y-2 pt-2 border-t">
-                      <label className="block font-bold text-gray-800">Assign Manager Permissions:</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: 'manage_products', label: 'Manage Products' },
-                          { id: 'manage_categories', label: 'Manage Categories' },
-                          { id: 'manage_orders', label: 'Manage Orders' },
-                          { id: 'manage_refunds', label: 'Authorize Refunds' },
-                        ].map(perm => (
-                          <label key={perm.id} className="flex items-center gap-2 cursor-pointer py-1 font-medium">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-200">
+                    <div className="space-y-1">
+                      <label className="block font-bold text-slate-700">
+                        {language === 'ar' ? 'مضاعف السعر (معامل ضرب السعر للعميل)' : 'Custom Price Multiplier'}
+                      </label>
+                      <input
+                        id="staff-price-multiplier-input"
+                        type="number"
+                        step="0.01"
+                        min="0.1"
+                        max="10"
+                        placeholder="e.g. 1.0"
+                        value={staffPriceMultiplier}
+                        onChange={e => setStaffPriceMultiplier(e.target.value)}
+                        className="w-full border rounded-lg p-2 text-xs font-mono font-bold bg-white"
+                      />
+                      <p className="text-[10px] text-gray-400">
+                        {language === 'ar' ? '1.0 تعني السعر العادي. أقل من 1.0 تعني خصم (مثل 0.9 = خصم 10%). أكثر من 1.0 تعني زيادة.' : '1.0 is standard. < 1.0 is discount (e.g. 0.90 is 10% off). > 1.0 is markup (e.g. 1.15 is 15% markup).'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col justify-center space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
+                        <input
+                          id="staff-disabled-checkbox"
+                          type="checkbox"
+                          checked={staffDisabled}
+                          onChange={e => setStaffDisabled(e.target.checked)}
+                          className="rounded-sm text-rose-600 focus:ring-rose-500 w-4 h-4"
+                        />
+                        <span>{language === 'ar' ? 'الحساب معطل (Disabled)' : 'Account Disabled'}</span>
+                      </label>
+                      <p className="text-[10px] text-gray-400">
+                        {language === 'ar' ? 'سيؤدي تعطيل الحساب إلى إنهاء جلسته ومنعه من تسجيل الدخول فوراً.' : 'Disabling this user blocks their access and terminates their active session instantly.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Permissions checkboxes (Only shown/editable if role is staff) */}
+                  {staffRole === 'staff' && (
+                    <div className="space-y-3 pt-3 border-t">
+                      <label className="block font-bold text-gray-800">
+                        {language === 'ar' ? 'تخصيص حقوق الوصول الدقيقة للموظف:' : 'Configure Granular Access Rights:'}
+                      </label>
+                      
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 bg-indigo-50/20 border border-indigo-100 rounded-2xl">
+                        
+                        <div className="space-y-2">
+                          <p className="font-extrabold text-indigo-900 text-[10px] uppercase tracking-wider">{language === 'ar' ? 'إدارة الطلبات' : 'Order Management'}</p>
+                          
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
                             <input
-                              id={`perm-checkbox-${perm.id}`}
+                              id="perm-see-all-orders"
                               type="checkbox"
-                              checked={staffPermissions.includes(perm.id)}
-                              onChange={() => togglePermission(perm.id)}
-                              className="rounded-sm text-emerald-600"
+                              checked={canSeeAllOrders}
+                              onChange={e => setCanSeeAllOrders(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
                             />
-                            <span>{perm.label}</span>
+                            <span>{language === 'ar' ? 'رؤية جميع الطلبات' : 'View all orders'}</span>
                           </label>
-                        ))}
+
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
+                            <input
+                              id="perm-edit-orders"
+                              type="checkbox"
+                              checked={canEditOrders}
+                              onChange={e => setCanEditOrders(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
+                            />
+                            <span>{language === 'ar' ? 'تعديل الطلبات' : 'Edit orders'}</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
+                            <input
+                              id="perm-delete-orders"
+                              type="checkbox"
+                              checked={canDeleteOrders}
+                              onChange={e => setCanDeleteOrders(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
+                            />
+                            <span>{language === 'ar' ? 'حذف الطلبات' : 'Delete orders'}</span>
+                          </label>
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="font-extrabold text-indigo-900 text-[10px] uppercase tracking-wider">{language === 'ar' ? 'التحكم بالنسخ الاحتياطي والنظام' : 'System & Backups'}</p>
+                          
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
+                            <input
+                              id="perm-view-backups"
+                              type="checkbox"
+                              checked={canViewBackups}
+                              onChange={e => setCanViewBackups(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
+                            />
+                            <span>{language === 'ar' ? 'رؤية النسخ الاحتياطية' : 'View server backups'}</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
+                            <input
+                              id="perm-manage-backups"
+                              type="checkbox"
+                              checked={canManageBackups}
+                              onChange={e => setCanManageBackups(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
+                            />
+                            <span>{language === 'ar' ? 'إدارة وإنشاء واستعادة النسخ' : 'Manage & restore backups'}</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 cursor-pointer font-medium text-xs text-gray-700">
+                            <input
+                              id="perm-view-dashboard"
+                              type="checkbox"
+                              checked={canViewFullDashboard}
+                              onChange={e => setCanViewFullDashboard(e.target.checked)}
+                              className="rounded-sm text-indigo-600"
+                            />
+                            <span>{language === 'ar' ? 'عرض لوحة المعلومات والإحصائيات كاملة' : 'Access full metric dashboard'}</span>
+                          </label>
+                        </div>
+
                       </div>
                     </div>
                   )}
@@ -1031,16 +1809,55 @@ export const AdminPanel: React.FC = () => {
 
               {/* Shipping and items brief summary */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                <div className="bg-gray-50/30 p-4 rounded-xl border border-dashed">
+                <div className="bg-gray-50/30 p-4 rounded-xl border border-dashed space-y-1">
                   <p className="font-bold text-gray-700 mb-2">Delivery Details</p>
                   <p className="mb-1"><span className="text-gray-400">Destination:</span> {selectedOrder.shippingAddress.city}</p>
                   <p className="mb-1"><span className="text-gray-400">Address:</span> {selectedOrder.shippingAddress.street}</p>
+                  {selectedOrder.shippingAddress.nearestLandmark && (
+                    <p className="mb-1"><span className="text-gray-400">Nearest Landmark:</span> {selectedOrder.shippingAddress.nearestLandmark}</p>
+                  )}
+                  {selectedOrder.shippingAddress.buildingFloor && (
+                    <p className="mb-1"><span className="text-gray-400">Floor/Apt:</span> {selectedOrder.shippingAddress.buildingFloor}</p>
+                  )}
+                  {selectedOrder.shippingAddress.preferredDeliveryTime && (
+                    <p className="mb-1"><span className="text-gray-400">Preferred Time:</span> {selectedOrder.shippingAddress.preferredDeliveryTime}</p>
+                  )}
                   <p><span className="text-gray-400">Recipient Phone:</span> {selectedOrder.shippingAddress.phone}</p>
                 </div>
 
-                <div className="bg-gray-50/30 p-4 rounded-xl border border-dashed">
+                <div className="bg-gray-50/30 p-4 rounded-xl border border-dashed space-y-1">
                   <p className="font-bold text-gray-700 mb-2">Billing & Payment</p>
-                  <p className="mb-1"><span className="text-gray-400">Total Price:</span> <span className="font-black text-emerald-600">${selectedOrder.totalAmount.toFixed(2)}</span></p>
+                  {(() => {
+                    const orderItemsSubtotal = selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                    const curr = settings?.currency || 'USD';
+                    return (
+                      <div className="space-y-1 font-medium text-gray-600 text-[11px] mb-2 border-b border-gray-100 pb-2">
+                        <div className="flex justify-between">
+                          <span>Items Subtotal:</span>
+                          <span className="font-mono">{orderItemsSubtotal.toFixed(2)} {curr}</span>
+                        </div>
+                        {selectedOrder.shippingFee !== undefined && selectedOrder.shippingFee > 0 && (
+                          <div className="flex justify-between">
+                            <span>Default Shipping:</span>
+                            <span className="font-mono">+{selectedOrder.shippingFee.toFixed(2)} {curr}</span>
+                          </div>
+                        )}
+                        {selectedOrder.shippingDiscount !== undefined && selectedOrder.shippingDiscount > 0 && (
+                          <div className="flex justify-between text-rose-600 font-bold">
+                            <span>Shipping Discount:</span>
+                            <span className="font-mono">-{selectedOrder.shippingDiscount.toFixed(2)} {curr}</span>
+                          </div>
+                        )}
+                        {selectedOrder.codCharge !== undefined && selectedOrder.codCharge > 0 && (
+                          <div className="flex justify-between">
+                            <span>COD Extra Charge:</span>
+                            <span className="font-mono">+{selectedOrder.codCharge.toFixed(2)} {curr}</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  <p className="mb-1"><span className="text-gray-400">Total Charged:</span> <span className="font-black text-emerald-600 font-mono text-sm">{selectedOrder.totalAmount.toFixed(2)} {settings?.currency || 'USD'}</span></p>
                   <p className="mb-1"><span className="text-gray-400">Processor:</span> <span className="uppercase">{selectedOrder.paymentMethod}</span></p>
                   {selectedOrder.paymentDetails?.refundId && (
                     <p className="text-rose-600 font-bold mt-1">Refund Reference ID: {selectedOrder.paymentDetails.refundId}</p>

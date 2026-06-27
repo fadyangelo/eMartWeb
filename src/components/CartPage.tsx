@@ -14,14 +14,52 @@ export const CartPage: React.FC = () => {
     setShowAuthModal, 
     setAuthModalCallback,
     apiFetch,
-    setActiveTab
+    setActiveTab,
+    settings,
+    getProductPrice
   } = useApp();
 
   // Shipping form state
+  const [shippingCities, setShippingCities] = useState<any[]>([]);
+  const [selectedCityId, setSelectedCityId] = useState('');
   const [city, setCity] = useState('');
   const [street, setStreet] = useState('');
   const [phone, setPhone] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'kasheir'>('stripe');
+  const [nearestLandmark, setNearestLandmark] = useState('');
+  const [buildingFloor, setBuildingFloor] = useState('');
+  const [preferredDeliveryTime, setPreferredDeliveryTime] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'card'>('cod');
+
+  React.useEffect(() => {
+    const fetchCities = async () => {
+      try {
+        const res = await apiFetch('/api/shipping-cities');
+        if (res && Array.isArray(res)) {
+          const sorted = [...res].sort((a, b) => {
+            const nameA = language === 'ar' ? a.nameAr : a.nameEn;
+            const nameB = language === 'ar' ? b.nameAr : b.nameEn;
+            return nameA.localeCompare(nameB);
+          });
+          setShippingCities(sorted);
+          if (sorted.length > 0) {
+            setSelectedCityId(sorted[0].id);
+            setCity(sorted[0].nameEn);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch shipping cities', err);
+      }
+    };
+    fetchCities();
+  }, [language]);
+
+  React.useEffect(() => {
+    if (settings?.paymentOptions && settings.paymentOptions.length > 0) {
+      if (!settings.paymentOptions.includes(paymentMethod)) {
+        setPaymentMethod(settings.paymentOptions[0]);
+      }
+    }
+  }, [settings, paymentMethod]);
 
   // Stripe simulated token
   const [stripeToken, setStripeToken] = useState('');
@@ -32,8 +70,52 @@ export const CartPage: React.FC = () => {
   const [completedOrder, setCompletedOrder] = useState<any | null>(null);
 
   const calculateSubtotal = () => {
-    return cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    return cart.reduce((sum, item) => {
+      const { final } = getProductPrice(item.product);
+      return sum + final * item.quantity;
+    }, 0);
   };
+
+  const getShippingAndCODDetails = () => {
+    const subtotal = calculateSubtotal();
+    const selectedCityObj = shippingCities.find(c => c.id === selectedCityId);
+    let defaultFee = 0;
+    let discount = 0;
+    let netFee = 0;
+    let minOrder = 0;
+    let isBelowMinOrder = false;
+
+    if (selectedCityObj) {
+      defaultFee = selectedCityObj.defaultShippingFee;
+      minOrder = selectedCityObj.minOrderAmount;
+      if (subtotal < minOrder) {
+        isBelowMinOrder = true;
+      }
+      if (subtotal >= selectedCityObj.minOrderForDiscount) {
+        discount = selectedCityObj.discountAmount;
+      }
+      netFee = Math.max(0, defaultFee - discount);
+    }
+
+    const codCharge = (paymentMethod === 'cod' && settings?.codExtraChargeEnabled) 
+      ? (settings.codExtraChargeAmount || 0) 
+      : 0;
+
+    const total = subtotal + netFee + codCharge;
+
+    return {
+      subtotal,
+      defaultFee,
+      discount,
+      netFee,
+      minOrder,
+      isBelowMinOrder,
+      codCharge,
+      total
+    };
+  };
+
+  const { subtotal: detailsSubtotal, defaultFee, discount, netFee, minOrder, isBelowMinOrder, codCharge, total } = getShippingAndCODDetails();
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,8 +123,18 @@ export const CartPage: React.FC = () => {
 
     if (cart.length === 0) return;
 
-    if (!city || !street || !phone) {
-      setErrorMsg('Please fill in all shipping details.');
+    if (!selectedCityId || !street || !phone) {
+      setErrorMsg(language === 'ar' ? 'الرجاء ملء جميع حقول الشحن المطلوبة.' : 'Please fill in all shipping details.');
+      return;
+    }
+
+    if (isBelowMinOrder) {
+      const cityObj = shippingCities.find(c => c.id === selectedCityId);
+      const cityName = cityObj ? (language === 'ar' ? cityObj.nameAr : cityObj.nameEn) : city;
+      setErrorMsg(language === 'ar' 
+        ? `الحد الأدنى لقيمة الطلب لتفعيل التوصيل إلى ${cityName} هو ${minOrder} ج.م` 
+        : `Minimum order amount for shipping to ${cityName} is ${minOrder} EGP.`
+      );
       return;
     }
 
@@ -68,10 +160,19 @@ export const CartPage: React.FC = () => {
         quantity: item.quantity,
       }));
 
+      const cityObj = shippingCities.find(c => c.id === selectedCityId);
+
       const payload = {
         items: itemsPayload,
         paymentMethod,
-        shippingAddress: { city, street, phone },
+        shippingAddress: { 
+          city: cityObj ? cityObj.nameEn : city, 
+          street, 
+          phone,
+          nearestLandmark,
+          buildingFloor,
+          preferredDeliveryTime
+        },
         stripePaymentToken: stripeToken || 'tok_visa', // simulated token
       };
 
@@ -111,7 +212,7 @@ export const CartPage: React.FC = () => {
           </p>
           <p className="flex justify-between">
             <span>{t('orderTotal')}:</span>
-            <span className="text-emerald-600 font-extrabold text-sm">${completedOrder.totalAmount.toFixed(2)}</span>
+            <span className="text-emerald-600 font-extrabold text-sm">{completedOrder.totalAmount.toFixed(2)} {settings?.currency || 'USD'}</span>
           </p>
           <p className="flex justify-between">
             <span>{t('paymentMethod')}:</span>
@@ -184,7 +285,19 @@ export const CartPage: React.FC = () => {
                       <h4 className="font-semibold text-gray-900 text-sm">
                         {language === 'ar' ? item.product.nameAr : item.product.nameEn}
                       </h4>
-                      <p className="text-xs text-emerald-600 font-bold">${item.product.price.toFixed(2)}</p>
+                      {(() => {
+                        const { original, final, hasDiscount } = getProductPrice(item.product);
+                        const curr = settings?.currency || 'USD';
+                        if (hasDiscount) {
+                          return (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs text-rose-600 font-bold">{final.toFixed(2)} {curr}</span>
+                              <span className="text-[10px] line-through text-gray-400 font-normal">{original.toFixed(2)} {curr}</span>
+                            </div>
+                          );
+                        }
+                        return <p className="text-xs text-emerald-600 font-bold">{original.toFixed(2)} {curr}</p>;
+                      })()}
                     </div>
                     
                     <button
@@ -217,7 +330,11 @@ export const CartPage: React.FC = () => {
                     </div>
 
                     <span className="text-sm font-bold text-gray-900">
-                      ${(item.product.price * item.quantity).toFixed(2)}
+                      {(() => {
+                        const { final } = getProductPrice(item.product);
+                        const curr = settings?.currency || 'USD';
+                        return `${(final * item.quantity).toFixed(2)} ${curr}`;
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -225,9 +342,51 @@ export const CartPage: React.FC = () => {
             ))}
           </div>
 
-          <div className="border-t pt-4 flex justify-between items-center text-sm font-bold text-gray-900">
-            <span>{t('subtotal')}</span>
-            <span className="text-emerald-600 text-lg">${subtotal.toFixed(2)}</span>
+          <div className="border-t pt-4 space-y-2.5 text-xs font-semibold text-gray-600">
+            <div className="flex justify-between items-center text-sm text-gray-900 font-bold">
+              <span>{t('subtotal')}</span>
+              <span className="font-bold">{subtotal.toFixed(2)} {settings?.currency || 'USD'}</span>
+            </div>
+
+            {selectedCityId ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <span>{language === 'ar' ? 'رسوم الشحن الافتراضية' : 'Default Shipping Fee'}</span>
+                  <span className="font-mono text-gray-900">+{defaultFee.toFixed(2)} {settings?.currency || 'USD'}</span>
+                </div>
+
+                {discount > 0 ? (
+                  <div className="flex justify-between items-center text-rose-600 font-bold">
+                    <span>{language === 'ar' ? 'خصم الشحن' : 'Shipping Fee Discount'}</span>
+                    <span className="font-mono">-{discount.toFixed(2)} {settings?.currency || 'USD'}</span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-gray-400 font-normal">
+                    {language === 'ar'
+                      ? `* أضف منتجات بقيمة ${(minOrder - subtotal) > 0 ? (minOrder - subtotal).toFixed(2) : '0'} ${settings?.currency || 'USD'} أخرى للحصول على خصم الشحن.`
+                      : `* Add ${(minOrder - subtotal) > 0 ? (minOrder - subtotal).toFixed(2) : '0'} ${settings?.currency || 'USD'} more of products to apply shipping discount.`}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-[10px] text-gray-400 italic">
+                {language === 'ar' ? '* حدد مدينة الشحن لحساب التكاليف والخصومات' : '* Select shipping city to determine fees & discounts'}
+              </p>
+            )}
+
+            {paymentMethod === 'cod' && settings?.codExtraChargeEnabled && (
+              <div className="flex justify-between items-center">
+                <span>{language === 'ar' ? 'رسوم الدفع عند الاستلام' : 'Cash on Delivery Extra Charge'}</span>
+                <span className="font-mono text-gray-900">+{codCharge.toFixed(2)} {settings?.currency || 'USD'}</span>
+              </div>
+            )}
+
+            <div className="border-t pt-3 flex justify-between items-center text-base font-black text-gray-900">
+              <span>{language === 'ar' ? 'الإجمالي الكلي' : 'Total Amount'}</span>
+              <span className="text-emerald-600 text-xl font-black font-mono">
+                {total.toFixed(2)} {settings?.currency || 'USD'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -261,33 +420,91 @@ export const CartPage: React.FC = () => {
 
           <div className="space-y-4 text-xs font-semibold text-gray-600">
             <div className="space-y-1">
-              <label className="block">{t('cityLabel')}</label>
-              <input
-                id="shipping-city-input"
-                type="text"
-                required
-                value={city}
-                onChange={e => setCity(e.target.value)}
-                placeholder="Cairo, Giza, etc."
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden bg-gray-50/20"
-              />
+              <label className="block text-gray-700 font-bold">{language === 'ar' ? 'المدينة / المحافظة' : 'City / Governorate'}</label>
+              {shippingCities.length > 0 ? (
+                <select
+                  id="shipping-city-select"
+                  required
+                  value={selectedCityId}
+                  onChange={e => {
+                    setSelectedCityId(e.target.value);
+                    const selectedObj = shippingCities.find(c => c.id === e.target.value);
+                    if (selectedObj) setCity(selectedObj.nameEn);
+                  }}
+                  className="w-full bg-white border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                >
+                  {shippingCities.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {language === 'ar' ? c.nameAr : c.nameEn} ({c.defaultShippingFee} EGP)
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="shipping-city-input"
+                  type="text"
+                  required
+                  value={city}
+                  onChange={e => setCity(e.target.value)}
+                  placeholder="Cairo, Giza, etc."
+                  className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
+                />
+              )}
             </div>
 
             <div className="space-y-1">
-              <label className="block">{t('streetLabel')}</label>
+              <label className="block text-gray-700 font-bold">{language === 'ar' ? 'العنوان بالتفصيل (اسم الشارع والمبنى)' : 'Full Address (Street & Building)'}</label>
               <input
                 id="shipping-street-input"
                 type="text"
                 required
                 value={street}
                 onChange={e => setStreet(e.target.value)}
-                placeholder="15 El Tahrir Square, Apt 4"
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden bg-gray-50/20"
+                placeholder={language === 'ar' ? 'مثال: 15 شارع التحرير، الطابق الرابع' : 'e.g. 15 El Tahrir Square, Apt 4'}
+                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-gray-500">{language === 'ar' ? 'أقرب علامة مميزة (اختياري)' : 'Nearest Landmark (Optional)'}</label>
+                <input
+                  id="shipping-landmark-input"
+                  type="text"
+                  value={nearestLandmark}
+                  onChange={e => setNearestLandmark(e.target.value)}
+                  placeholder={language === 'ar' ? 'بجوار مسجد / سوبرماركت' : 'e.g. Near Metro Station'}
+                  className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-gray-500">{language === 'ar' ? 'رقم الطابق والشقة (اختياري)' : 'Floor & Apartment (Optional)'}</label>
+                <input
+                  id="shipping-building-input"
+                  type="text"
+                  value={buildingFloor}
+                  onChange={e => setBuildingFloor(e.target.value)}
+                  placeholder={language === 'ar' ? 'الدور 5 شقة 10' : 'e.g. Floor 5, Apt 10'}
+                  className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-gray-500">{language === 'ar' ? 'وقت التوصيل المفضل (اختياري)' : 'Preferred Delivery Time (Optional)'}</label>
+              <input
+                id="shipping-time-input"
+                type="text"
+                value={preferredDeliveryTime}
+                onChange={e => setPreferredDeliveryTime(e.target.value)}
+                placeholder={language === 'ar' ? 'مثال: مساءً بين ٥ إلى ٩ مساءً' : 'e.g. Afternoon 5pm to 9pm'}
+                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="block">{t('phoneLabel')}</label>
+              <label className="block text-gray-700 font-bold">{t('phoneLabel')}</label>
               <input
                 id="shipping-phone-input"
                 type="tel"
@@ -295,7 +512,7 @@ export const CartPage: React.FC = () => {
                 value={phone}
                 onChange={e => setPhone(e.target.value)}
                 placeholder="+20 101 234 5678"
-                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-hidden bg-gray-50/20"
+                className="w-full border border-gray-200 rounded-xl p-2.5 text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-gray-50/20"
               />
             </div>
 
@@ -303,31 +520,58 @@ export const CartPage: React.FC = () => {
               <label className="block text-gray-700 font-bold">{t('paymentMethod')}</label>
               
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  id="pay-stripe-btn"
-                  type="button"
-                  onClick={() => setPaymentMethod('stripe')}
-                  className={`p-3 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition ${
-                    paymentMethod === 'stripe'
-                      ? 'border-emerald-500 bg-emerald-50/30 text-emerald-700 font-bold'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="text-sm">Stripe Card</span>
-                </button>
-                <button
-                  id="pay-kasheir-btn"
-                  type="button"
-                  onClick={() => setPaymentMethod('kasheir')}
-                  className={`p-3 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition ${
-                    paymentMethod === 'kasheir'
-                      ? 'border-emerald-500 bg-emerald-50/30 text-emerald-700 font-bold'
-                      : 'border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className="text-sm">Kasheir</span>
-                </button>
+                {(!settings?.paymentOptions || settings.paymentOptions.includes('cod')) && (
+                  <button
+                    id="pay-cod-btn"
+                    type="button"
+                    onClick={() => setPaymentMethod('cod')}
+                    className={`p-3 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition ${
+                      paymentMethod === 'cod'
+                        ? 'border-emerald-500 bg-emerald-50/30 text-emerald-700 font-bold'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-sm">{language === 'ar' ? 'الدفع عند الاستلام' : 'Cash on Delivery (COD)'}</span>
+                  </button>
+                )}
+                
+                {(!settings?.paymentOptions || settings.paymentOptions.includes('card')) && (
+                  <button
+                    id="pay-card-btn"
+                    type="button"
+                    onClick={() => setPaymentMethod('card')}
+                    className={`p-3 border rounded-xl flex flex-col items-center justify-center gap-1.5 transition ${
+                      paymentMethod === 'card'
+                        ? 'border-emerald-500 bg-emerald-50/30 text-emerald-700 font-bold'
+                        : 'border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-sm">{language === 'ar' ? 'بطاقة بنكية' : 'Bank Card (Online)'}</span>
+                  </button>
+                )}
               </div>
+
+              {paymentMethod === 'card' && (
+                <div className="p-3 bg-gray-50 border border-gray-100 rounded-xl space-y-2 mt-2 animate-fade-in">
+                  <div className="text-[10px] text-gray-400 font-medium">
+                    {language === 'ar' 
+                      ? `سيتم معالجة الدفع بأمان عبر بوابة الدفع المفعلة (${settings?.paymentGateway || 'Stripe'})`
+                      : `Secured via active payment gateway (${settings?.paymentGateway || 'Stripe'})`
+                    }
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[10px] text-gray-500 font-bold">Simulated Card Token / Card Number</label>
+                    <input 
+                      id="card-token-input"
+                      type="text" 
+                      value={stripeToken}
+                      onChange={e => setStripeToken(e.target.value)}
+                      placeholder="4242 4242 4242 4242"
+                      className="w-full border border-gray-200 rounded-lg p-2 text-xs bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

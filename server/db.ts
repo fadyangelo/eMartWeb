@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { User, Product, Category, Order, OrderStatus } from '../src/types';
+import { User, Product, Category, Order, OrderStatus, SystemSettings, Transaction, ActivityLog, BackupFile, ShippingCity } from '../src/types';
 
 const DB_PATH = path.join(process.cwd(), 'db.json');
 
@@ -10,6 +10,11 @@ interface DatabaseSchema {
   products: Product[];
   categories: Category[];
   orders: Order[];
+  settings: SystemSettings;
+  transactions: Transaction[];
+  activityLogs?: ActivityLog[];
+  backups?: BackupFile[];
+  shippingCities?: ShippingCity[];
 }
 
 const DEFAULT_CATEGORIES: Category[] = [
@@ -317,29 +322,193 @@ const generateMockOrders = (): Order[] => {
   return orders;
 };
 
+export const DEFAULT_SETTINGS: SystemSettings = {
+  paymentOptions: ['cod', 'card'],
+  paymentGateway: 'stripe',
+  gatewayMode: 'test',
+  stripeTestSecretKey: 'sk_test_placeholder',
+  stripeLiveSecretKey: '',
+  kasheirTestKey: 'pk_test_placeholder',
+  kasheirLiveKey: '',
+  currency: 'USD',
+  promoTimerEnabled: true,
+  promoTimerFrom: new Date(Date.now() - 3600000).toISOString(), // started 1 hour ago
+  promoTimerTo: new Date(Date.now() + 86400000 * 3).toISOString(), // ends in 3 days
+  promoTimerTextEn: 'Big Summer Sale - Up to 50% Off!',
+  promoTimerTextAr: 'تخفيضات الصيف الكبرى - خصم يصل إلى ٥٠٪!',
+  codExtraChargeEnabled: false,
+  codExtraChargeAmount: 0,
+};
+
+export const generateMockTransactions = (orders: Order[]): Transaction[] => {
+  const transactions: Transaction[] = [];
+  for (const order of orders) {
+    const isRefunded = order.status === 'refunded';
+    
+    // Add primary payment transaction
+    const txId = `tx-pay-${order.id}`;
+    transactions.push({
+      id: txId,
+      orderId: order.id,
+      clientName: order.customerName,
+      clientMobile: order.shippingAddress?.phone || '+201012345678',
+      amount: order.totalAmount,
+      paymentMethod: order.paymentMethod === 'cod' ? 'cod' : 'card',
+      paymentGateway: order.paymentMethod === 'cod' ? undefined : (order.paymentMethod as any),
+      gatewayMode: order.paymentMethod === 'cod' ? undefined : 'test',
+      transactionNumber: order.paymentDetails?.paymentIntentId || `pi_sandbox_${order.id}`,
+      last4: order.paymentDetails?.last4 || '4242',
+      status: isRefunded ? 'Refund' : 'Success',
+      type: 'payment',
+      createdAt: order.createdAt,
+    });
+
+    // Add refund transaction if refunded
+    if (isRefunded) {
+      transactions.push({
+        id: `tx-ref-${order.id}`,
+        orderId: order.id,
+        clientName: order.customerName,
+        clientMobile: order.shippingAddress?.phone || '+201012345678',
+        amount: order.totalAmount,
+        paymentMethod: 'card',
+        paymentGateway: order.paymentMethod === 'cod' ? undefined : (order.paymentMethod as any),
+        gatewayMode: order.paymentMethod === 'cod' ? undefined : 'test',
+        transactionNumber: order.paymentDetails?.refundId || `ref_sandbox_${order.id}`,
+        last4: order.paymentDetails?.last4 || '4242',
+        status: 'Refund',
+        type: 'refund',
+        createdAt: new Date(new Date(order.createdAt).getTime() + 86400000).toISOString(), // 1 day later
+      });
+    }
+  }
+  return transactions;
+};
+
+const MOCK_ACTIVITY_LOGS: ActivityLog[] = [
+  {
+    id: 'log-1',
+    timestamp: new Date(2026, 5, 20, 10, 15, 0).toISOString(),
+    userEmail: 'admin@emart.com',
+    userName: 'Chief Admin',
+    action: 'System Initialized',
+    description: 'E-Mart platform database seeded and settings initialized successfully.',
+    ipAddress: '192.168.1.100',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  },
+  {
+    id: 'log-2',
+    timestamp: new Date(2026, 5, 22, 14, 30, 0).toISOString(),
+    userEmail: 'manager@emart.com',
+    userName: 'Samer Ahmed (Manager)',
+    action: 'Update Product',
+    description: 'Updated price of Quantum X Pro Smartphone to $899.99.',
+    ipAddress: '192.168.1.102',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+  },
+  {
+    id: 'log-3',
+    timestamp: new Date(2026, 5, 25, 11, 45, 0).toISOString(),
+    userEmail: 'admin@emart.com',
+    userName: 'Chief Admin',
+    action: 'Create Backup',
+    description: 'Manual system backup "backup-2026-06-25.json" created successfully.',
+    ipAddress: '192.168.1.100',
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+  }
+];
+
+export const DEFAULT_CITIES: ShippingCity[] = [
+  { id: 'c-1', nameEn: 'Cairo', nameAr: 'القاهرة', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-2', nameEn: 'Giza', nameAr: 'الجيزة', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-3', nameEn: 'Alexandria', nameAr: 'الإسكندرية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-4', nameEn: 'Qalyubia', nameAr: 'القليوبية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-5', nameEn: 'Sharqia', nameAr: 'الشرقية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-6', nameEn: 'Dakahlia', nameAr: 'الدقهلية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-7', nameEn: 'Beheira', nameAr: 'البحيرة', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-8', nameEn: 'Minya', nameAr: 'المنيا', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-9', nameEn: 'Gharbia', nameAr: 'الغربية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-10', nameEn: 'Sohag', nameAr: 'سوهاج', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-11', nameEn: 'Monufia', nameAr: 'المنوفية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-12', nameEn: 'Asyut', nameAr: 'أسيوط', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-13', nameEn: 'Kafr El Sheikh', nameAr: 'كفر الشيخ', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-14', nameEn: 'Faiyum', nameAr: 'الفيوم', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-15', nameEn: 'Qena', nameAr: 'قنا', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-16', nameEn: 'Damietta', nameAr: 'دمياط', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-17', nameEn: 'Aswan', nameAr: 'أسوان', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-18', nameEn: 'Ismailia', nameAr: 'الإسماعيلية', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-19', nameEn: 'Luxor', nameAr: 'الأقصر', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-20', nameEn: 'Port Said', nameAr: 'بورسعيد', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-21', nameEn: 'Suez', nameAr: 'السويس', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-22', nameEn: 'Red Sea', nameAr: 'البحر الأحمر', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-23', nameEn: 'South Sinai', nameAr: 'جنوب سيناء', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-24', nameEn: 'North Sinai', nameAr: 'شمال سيناء', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-25', nameEn: 'Matrouh', nameAr: 'مطروح', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-26', nameEn: 'New Valley', nameAr: 'الوادي الجديد', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 },
+  { id: 'c-27', nameEn: 'Beni Suef', nameAr: 'بني سويف', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 }
+];
+
 export const getDb = (): DatabaseSchema => {
   if (!fs.existsSync(DB_PATH)) {
+    const initialOrders = generateMockOrders();
     const initialDb: DatabaseSchema = {
       users: DEFAULT_USERS,
       passwords: DEFAULT_PASSWORDS,
       products: DEFAULT_PRODUCTS,
       categories: DEFAULT_CATEGORIES,
-      orders: generateMockOrders(),
+      orders: initialOrders,
+      settings: DEFAULT_SETTINGS,
+      transactions: generateMockTransactions(initialOrders),
+      activityLogs: MOCK_ACTIVITY_LOGS,
+      backups: [],
+      shippingCities: DEFAULT_CITIES
     };
     saveDb(initialDb);
     return initialDb;
   }
   try {
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as DatabaseSchema;
+    let updated = false;
+    
+    if (!parsed.settings) {
+      parsed.settings = DEFAULT_SETTINGS;
+      updated = true;
+    }
+    if (!parsed.transactions || parsed.transactions.length === 0) {
+      parsed.transactions = generateMockTransactions(parsed.orders || []);
+      updated = true;
+    }
+    if (!parsed.activityLogs) {
+      parsed.activityLogs = MOCK_ACTIVITY_LOGS;
+      updated = true;
+    }
+    if (!parsed.backups) {
+      parsed.backups = [];
+      updated = true;
+    }
+    if (!parsed.shippingCities || parsed.shippingCities.length === 0) {
+      parsed.shippingCities = DEFAULT_CITIES;
+      updated = true;
+    }
+    if (updated) {
+      saveDb(parsed);
+    }
+    return parsed;
   } catch (error) {
     console.error('Error reading JSON DB, restoring defaults', error);
+    const initialOrders = generateMockOrders();
     const initialDb: DatabaseSchema = {
       users: DEFAULT_USERS,
       passwords: DEFAULT_PASSWORDS,
       products: DEFAULT_PRODUCTS,
       categories: DEFAULT_CATEGORIES,
-      orders: generateMockOrders(),
+      orders: initialOrders,
+      settings: DEFAULT_SETTINGS,
+      transactions: generateMockTransactions(initialOrders),
+      activityLogs: MOCK_ACTIVITY_LOGS,
+      backups: [],
+      shippingCities: DEFAULT_CITIES
     };
     saveDb(initialDb);
     return initialDb;
