@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Category } from '../types';
-import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X, Video } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X, Video, Share2 } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
   const { language, t, addToCart, apiFetch, settings, getProductPrice, token, user } = useApp();
@@ -106,6 +106,50 @@ export const StoreFront: React.FC = () => {
   const [newComment, setNewComment] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
   const [reviewSuccessMsg, setReviewSuccessMsg] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Parse URL on mount for product sharing
+  useEffect(() => {
+    const pathParts = window.location.pathname.split('/');
+    const productIdx = pathParts.indexOf('product');
+    if (productIdx !== -1 && pathParts[productIdx + 1]) {
+      const prodId = pathParts[productIdx + 1];
+      const loadSharedProduct = async () => {
+        try {
+          const prod = await apiFetch(`/api/products/${prodId}`);
+          if (prod) {
+            setSelectedProduct(prod);
+          }
+        } catch (err) {
+          console.error('Error loading shared product details:', err);
+        }
+      };
+      loadSharedProduct();
+    }
+  }, []);
+
+  // Update URL pathname when selecting/deselecting a product
+  useEffect(() => {
+    if (selectedProduct) {
+      window.history.pushState(null, '', `/product/${selectedProduct.id}`);
+    } else {
+      if (window.location.pathname.includes('/product/')) {
+        window.history.pushState(null, '', '/');
+      }
+    }
+  }, [selectedProduct]);
+
+  const handleShareProduct = (e: React.MouseEvent, product: Product) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const shareUrl = `${window.location.origin}/product/${product.id}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopiedId(product.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }).catch(err => {
+      console.error('Failed to copy share link:', err);
+    });
+  };
 
   useEffect(() => {
     if (selectedProduct) {
@@ -524,6 +568,20 @@ export const StoreFront: React.FC = () => {
                   />
                 </button>
 
+                {/* Share Button floating */}
+                <button
+                  id={`share-toggle-${p.id}`}
+                  onClick={(e) => handleShareProduct(e, p)}
+                  className="absolute top-14 right-3 z-10 p-2 bg-white/90 backdrop-blur-xs rounded-full shadow-sm hover:scale-110 active:scale-95 transition text-gray-400 hover:text-emerald-600 flex items-center justify-center cursor-pointer"
+                  title={language === 'ar' ? 'نسخ رابط المنتج للمشاركة' : 'Copy product link to share'}
+                >
+                  {copiedId === p.id ? (
+                    <Check size={16} className="text-emerald-600 animate-pulse" />
+                  ) : (
+                    <Share2 size={16} />
+                  )}
+                </button>
+
                 {/* Badges */}
                 <div className="absolute top-3 left-3 flex flex-col gap-1.5 pointer-events-none">
                   {(() => {
@@ -685,6 +743,25 @@ export const StoreFront: React.FC = () => {
             id="quick-view-modal"
             className="relative w-full max-w-4xl bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 flex flex-col md:flex-row my-8"
           >
+            {/* Share Button */}
+            <button
+              id="share-product-btn"
+              onClick={(e) => handleShareProduct(e, selectedProduct)}
+              className="absolute top-4 right-16 z-20 p-2 rounded-full bg-white/90 text-gray-500 hover:text-emerald-600 shadow-md border hover:scale-105 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              title={language === 'ar' ? 'نسخ رابط المنتج للمشاركة' : 'Copy product link to share'}
+            >
+              {copiedId === selectedProduct.id ? (
+                <>
+                  <Check size={18} className="text-emerald-600 animate-pulse" />
+                  <span className="text-[10px] font-extrabold text-emerald-600 pr-1 select-none">
+                    {language === 'ar' ? 'تم النسخ!' : 'Copied!'}
+                  </span>
+                </>
+              ) : (
+                <Share2 size={18} />
+              )}
+            </button>
+
             {/* Close Button */}
             <button
               id="close-quick-view-btn"

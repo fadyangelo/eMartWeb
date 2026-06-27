@@ -429,6 +429,15 @@ app.get('/api/products', (req: Request, res: Response) => {
   });
 });
 
+app.get('/api/products/:id', (req: Request, res: Response) => {
+  const db = getDb();
+  const product = db.products.find(p => p.id === req.params.id);
+  if (!product) {
+    return res.status(404).json({ message: 'Product not found' });
+  }
+  res.json(product);
+});
+
 app.get('/api/categories', (req: Request, res: Response) => {
   const db = getDb();
   res.json(db.categories);
@@ -2190,10 +2199,88 @@ app.delete('/api/admin/restores/:id', requireAdminOrManager, (req: Request, res:
 });
 
 // ----------------------------------------------------
+// DYNAMIC PRODUCT SEO MIDDLEWARE
+// ----------------------------------------------------
+
+function injectProductMeta(html: string, product: Product, req: Request): string {
+  const name = product.nameEn || product.nameAr || 'Product';
+  const description = product.descriptionEn || product.descriptionAr || 'Check out this product on eMart!';
+  
+  const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+  const host = req.get('host') || 'emart2.com';
+  const absImageUrl = product.imageUrl.startsWith('http') 
+    ? product.imageUrl 
+    : `${protocol}://${host}${product.imageUrl}`;
+  const absProductUrl = `${protocol}://${host}${req.originalUrl}`;
+
+  // Replace Title
+  let modified = html.replace(/<title>[^]*?<\/title>/gi, `<title>${name} - eMart</title>`);
+  
+  // Replace Description
+  modified = modified.replace(/<meta\s+name="description"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta name="description" content="${description.replace(/"/g, '&quot;')}" />`);
+
+  // Replace Open Graph tags
+  modified = modified.replace(/<meta\s+property="og:title"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta property="og:title" content="${name.replace(/"/g, '&quot;')}" />`);
+  modified = modified.replace(/<meta\s+property="og:description"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta property="og:description" content="${description.replace(/"/g, '&quot;')}" />`);
+  modified = modified.replace(/<meta\s+property="og:image"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta property="og:image" content="${absImageUrl}" />`);
+  modified = modified.replace(/<meta\s+property="og:url"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta property="og:url" content="${absProductUrl}" />`);
+
+  // Replace Twitter tags
+  modified = modified.replace(/<meta\s+name="twitter:title"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta name="twitter:title" content="${name.replace(/"/g, '&quot;')}" />`);
+  modified = modified.replace(/<meta\s+name="twitter:description"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta name="twitter:description" content="${description.replace(/"/g, '&quot;')}" />`);
+  modified = modified.replace(/<meta\s+name="twitter:image"\s+content="[^]*?"\s*\/?>/gi, 
+    `<meta name="twitter:image" content="${absImageUrl}" />`);
+
+  return modified;
+}
+
+app.get('/product/:productId', (req: Request, res: Response) => {
+  const { productId } = req.params;
+  const db = getDb();
+  const product = db.products.find((p: any) => p.id === productId);
+
+  const indexPath = process.env.NODE_ENV === 'production'
+    ? path.join(process.cwd(), 'dist', 'index.html')
+    : path.join(process.cwd(), 'index.html');
+
+  if (!product) {
+    return res.sendFile(indexPath);
+  }
+
+  fs.readFile(indexPath, 'utf8', (err, html) => {
+    if (err) {
+      console.error('Error reading index.html:', err);
+      return res.status(500).send('Internal Server Error');
+    }
+
+    const modifiedHtml = injectProductMeta(html, product, req);
+    res.send(modifiedHtml);
+  });
+});
+
+// ----------------------------------------------------
 // START SERVER & VITE INTEGRATION
 // ----------------------------------------------------
 
 async function startServer() {
+  const logoPath = path.join(process.cwd(), 'public', 'images', 'logo.png');
+  const faviconPath = path.join(process.cwd(), 'public', 'favicon.ico');
+  if (fs.existsSync(logoPath) && !fs.existsSync(faviconPath)) {
+    try {
+      fs.copyFileSync(logoPath, faviconPath);
+      console.log('Copied logo.png to favicon.ico');
+    } catch (err) {
+      console.error('Error copying favicon:', err);
+    }
+  }
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
