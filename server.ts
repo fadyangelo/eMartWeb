@@ -8,7 +8,20 @@ import Stripe from 'stripe';
 import nodemailer from 'nodemailer';
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+function getPort() {
+  if (process.env.PORT) {
+    const p = parseInt(process.env.PORT, 10);
+    if (!isNaN(p)) return p;
+  }
+  const portArgIndex = process.argv.findIndex(arg => arg === '--port' || arg === '-p');
+  if (portArgIndex !== -1 && portArgIndex + 1 < process.argv.length) {
+    const p = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!isNaN(p)) return p;
+  }
+  return 3000;
+}
+
+const PORT = getPort();
 
 // JSON request body parser
 app.use(express.json());
