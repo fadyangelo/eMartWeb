@@ -44,7 +44,12 @@ const AppContent: React.FC = () => {
   const [adminMenuOpen, setAdminMenuOpen] = React.useState(false);
   const [adminSidebarCollapsed, setAdminSidebarCollapsed] = React.useState(false);
   const [showProfileModal, setShowProfileModal] = React.useState(false);
+  const [logoError, setLogoError] = React.useState(false);
   const isAr = language === 'ar';
+
+  React.useEffect(() => {
+    setLogoError(false);
+  }, [settings?.logoUrl]);
 
   React.useEffect(() => {
     if (!settings?.promoTimerEnabled || !settings?.promoTimerTo) return;
@@ -249,27 +254,30 @@ const AppContent: React.FC = () => {
             className="flex items-center gap-2.5 text-left group animate-fade-in"
           >
             <div className="relative w-10 h-10 shrink-0">
-              <img 
-                src={settings?.logoUrl || "/images/logo.png"} 
-                alt="eMart Logo" 
-                className="absolute inset-0 w-full h-full object-cover rounded-xl shadow-md border border-gray-100 transition duration-300 group-hover:scale-105"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  const fb = document.getElementById('emart-logo-fallback');
-                  if (fb) fb.classList.remove('hidden');
-                }}
-              />
-              <div 
-                id="emart-logo-fallback" 
-                className="hidden absolute inset-0 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-md group-hover:bg-emerald-700 transition"
-              >
-                eM
-              </div>
+              {!logoError && (settings?.logoUrl || "/images/logo.png") ? (
+                <img 
+                  src={settings?.logoUrl || "/images/logo.png"} 
+                  alt={isAr ? (settings?.storeNameAr || "شعار المتجر") : (settings?.storeNameEn || "Store Logo")} 
+                  className="absolute inset-0 w-full h-full object-cover rounded-xl shadow-md border border-gray-100 transition duration-300 group-hover:scale-105"
+                  referrerPolicy="no-referrer"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <div 
+                  id="emart-logo-fallback" 
+                  className="absolute inset-0 bg-emerald-600 rounded-xl flex items-center justify-center text-white font-black text-base shadow-md group-hover:bg-emerald-700 transition"
+                >
+                  {isAr ? (settings?.storeNameAr ? settings.storeNameAr.slice(0, 2) : 'إي') : (settings?.storeNameEn ? settings.storeNameEn.slice(0, 2) : 'eM')}
+                </div>
+              )}
             </div>
-            <div>
-              <h1 className="font-black text-lg tracking-tight text-gray-900 group-hover:text-emerald-600 transition">eMart</h1>
-              <p className="text-[9px] text-gray-400 font-bold uppercase tracking-wider">{t('slogan')}</p>
+            <div className="flex flex-col justify-center">
+              <h1 className="font-black text-lg tracking-tight text-gray-900 group-hover:text-emerald-600 transition leading-none">
+                {isAr ? (settings?.storeNameAr || 'إي مارت') : (settings?.storeNameEn || 'eMart')}
+              </h1>
+              <p className="text-[9px] text-gray-400 font-normal uppercase tracking-wider mt-1 leading-none">
+                {isAr ? (settings?.sloganAr || t('slogan')) : (settings?.sloganEn || t('slogan'))}
+              </p>
             </div>
           </button>
 

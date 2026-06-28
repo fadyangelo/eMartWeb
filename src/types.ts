@@ -178,6 +178,10 @@ export interface SystemSettings {
   baseUrl?: string;
   salesEmail?: string;
   logoUrl?: string;
+  storeNameEn?: string;
+  storeNameAr?: string;
+  sloganEn?: string;
+  sloganAr?: string;
   primaryColor?: string;
   secondaryColor?: string;
   defaultLanguage?: 'en' | 'ar';

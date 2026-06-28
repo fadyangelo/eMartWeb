@@ -24,6 +24,10 @@ export const AdminSettings: React.FC = () => {
     baseUrl: '',
     salesEmail: '',
     logoUrl: '',
+    storeNameEn: '',
+    storeNameAr: '',
+    sloganEn: '',
+    sloganAr: '',
     primaryColor: '#4f46e5',
     secondaryColor: '#10b981',
     defaultLanguage: 'en',
@@ -200,6 +204,83 @@ export const AdminSettings: React.FC = () => {
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Store Names & Slogans */}
+            <div className="md:col-span-2 space-y-4 border-b border-gray-100 pb-6">
+              <h4 className="text-xs font-extrabold text-indigo-600 uppercase tracking-wider flex items-center gap-1.5">
+                <Globe size={14} />
+                {isAr ? 'اسم المتجر وشعاره اللفظي (Slogan)' : 'Store Name & Slogan Branding'}
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-650 mb-1.5 flex items-center gap-1" id="store-name-en-label">
+                    {isAr ? 'اسم المتجر (إنجليزي)' : 'Store Name (English)'}
+                  </label>
+                  <input
+                    id="store-name-en-input"
+                    type="text"
+                    value={settings.storeNameEn || ''}
+                    onChange={(e) => setSettings({ ...settings, storeNameEn: e.target.value })}
+                    placeholder="eMart"
+                    className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {isAr ? 'اسم المتجر المعروض باللغة الإنجليزية بجانب الشعار.' : 'Store name displayed in English beside the logo.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-650 mb-1.5 flex items-center gap-1" id="store-name-ar-label">
+                    {isAr ? 'اسم المتجر (عربي)' : 'Store Name (Arabic)'}
+                  </label>
+                  <input
+                    id="store-name-ar-input"
+                    type="text"
+                    value={settings.storeNameAr || ''}
+                    onChange={(e) => setSettings({ ...settings, storeNameAr: e.target.value })}
+                    placeholder="إي مارت"
+                    className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {isAr ? 'اسم المتجر المعروض باللغة العربية بجانب الشعار.' : 'Store name displayed in Arabic beside the logo.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-650 mb-1.5 flex items-center gap-1" id="store-slogan-en-label">
+                    {isAr ? 'شعار المتجر اللفظي (إنجليزي)' : 'Store Slogan (English)'}
+                  </label>
+                  <input
+                    id="store-slogan-en-input"
+                    type="text"
+                    value={settings.sloganEn || ''}
+                    onChange={(e) => setSettings({ ...settings, sloganEn: e.target.value })}
+                    placeholder="Your Premium Marketplace"
+                    className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {isAr ? 'شعار المتجر اللفظي باللغة الإنجليزية المعروض أسفل الاسم.' : 'Store slogan displayed in English under the store name.'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-650 mb-1.5 flex items-center gap-1" id="store-slogan-ar-label">
+                    {isAr ? 'شعار المتجر اللفظي (عربي)' : 'Store Slogan (Arabic)'}
+                  </label>
+                  <input
+                    id="store-slogan-ar-input"
+                    type="text"
+                    value={settings.sloganAr || ''}
+                    onChange={(e) => setSettings({ ...settings, sloganAr: e.target.value })}
+                    placeholder="سوقك التجاري المتميز"
+                    className="w-full text-xs bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1">
+                    {isAr ? 'شعار المتجر اللفظي باللغة العربية المعروض أسفل الاسم.' : 'Store slogan displayed in Arabic under the store name.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Logo Upload */}
             <div className="space-y-3">
               <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
@@ -227,8 +308,8 @@ export const AdminSettings: React.FC = () => {
                 </div>
                 
                 <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label className="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <label className="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition w-fit">
                       <Upload size={13} />
                       {isAr ? 'رفع ملف شعار' : 'Upload File'}
                       <input 
@@ -243,7 +324,7 @@ export const AdminSettings: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => setSettings(prev => ({ ...prev, logoUrl: '' }))}
-                        className="text-xs font-bold text-rose-600 hover:text-rose-800 px-2 py-1.5 hover:bg-rose-50 rounded-lg transition"
+                        className="text-xs font-bold text-rose-600 hover:text-rose-800 px-3 py-1.5 hover:bg-rose-50 rounded-lg transition w-fit text-left"
                       >
                         {isAr ? 'إزالة' : 'Remove'}
                       </button>

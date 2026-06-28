@@ -30,7 +30,7 @@ export const OfflinePage: React.FC = () => {
         {/* Header Store Brand Section */}
         <div className="w-full pt-8 px-8 pb-4 flex flex-col items-center border-b border-gray-50 bg-gradient-to-b from-gray-50/50 to-white">
           {settings?.logoUrl ? (
-            <div className="h-16 w-16 bg-white rounded-2xl border border-gray-150/80 p-2.5 flex items-center justify-center overflow-hidden shadow-xs hover:shadow-sm transition-all duration-300">
+            <div className="h-16 w-16 flex items-center justify-center overflow-hidden transition-all duration-300">
               <img 
                 src={settings.logoUrl} 
                 alt="Store Logo" 
@@ -47,28 +47,19 @@ export const OfflinePage: React.FC = () => {
             </div>
           )}
           <span className="mt-3.5 font-black text-sm tracking-tight text-gray-800">
-            {settings?.storeNameEn || 'eMart Store'}
+            {isAr ? (settings?.storeNameAr || 'إي مارت') : (settings?.storeNameEn || 'eMart Store')}
           </span>
         </div>
 
-        {/* Beautiful Main Illustration or Store Logo */}
+        {/* Beautiful Main Illustration */}
         <div className="w-full px-6 sm:px-12 pt-6 pb-2 max-w-sm flex justify-center">
           <div className="relative w-full group overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-xs p-6 flex items-center justify-center h-48 transition-transform duration-300 hover:scale-[1.02]">
-            {settings?.logoUrl ? (
-              <img 
-                src={settings.logoUrl} 
-                alt="Store Logo" 
-                className="max-h-full max-w-full object-contain p-2"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <img 
-                src={illustrationUrl} 
-                alt="Store Temporarily Closed" 
-                className="w-full h-auto object-cover max-h-[220px]"
-                referrerPolicy="no-referrer"
-              />
-            )}
+            <img 
+              src={illustrationUrl} 
+              alt="Store Temporarily Closed" 
+              className="w-full h-auto object-cover max-h-[220px]"
+              referrerPolicy="no-referrer"
+            />
             {/* Pulsing Status Overlay Badges */}
             <div className="absolute top-3 right-3 bg-rose-500/90 backdrop-blur-xs text-white text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
               <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>

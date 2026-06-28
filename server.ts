@@ -6,6 +6,7 @@ import { getDb, saveDb, clearDbCache } from './server/db';
 import { User, Product, Category, Order, OrderStatus, StatusHistoryItem, SystemSettings, Transaction, BackupFile, ActivityLog, ShippingCity, RestoreEvent } from './src/types';
 import Stripe from 'stripe';
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 
 const app = express();
 function getPort() {
@@ -249,6 +250,299 @@ async function sendVerificationEmail(toEmail: string, code: string) {
   };
 
   await transporter.sendMail(mailOptions);
+}
+
+function generateOrderPdf(order: Order, settings: SystemSettings): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      const buffers: Buffer[] = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (err) => reject(err));
+
+      // Draw PDF Document Banner
+      doc.rect(0, 0, 595.28, 120).fill('#059669'); // Emerald-600 color
+      doc.fillColor('#ffffff');
+      doc.fontSize(28).font('Helvetica-Bold').text('eMart Store', 50, 40);
+      doc.fontSize(12).font('Helvetica').text('Official Order Invoice', 50, 75);
+
+      // Reset text color to dark gray for body
+      doc.fillColor('#1f2937');
+
+      // Order summary section
+      doc.fontSize(16).font('Helvetica-Bold').text('Order Summary', 50, 150);
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Order ID: ${order.id}`, 50, 180);
+      doc.text(`Date & Time: ${new Date(order.createdAt).toLocaleString()}`, 50, 195);
+      doc.text(`Status: ${order.status.toUpperCase()}`, 50, 210);
+      doc.text(`Payment Method: ${order.paymentMethod.toUpperCase()}`, 50, 225);
+
+      // Client details section
+      doc.fontSize(16).font('Helvetica-Bold').text('Client Details', 320, 150);
+      doc.fontSize(10).font('Helvetica');
+      doc.text(`Name: ${order.customerName}`, 320, 180);
+      doc.text(`Email: ${order.customerEmail}`, 320, 195);
+      doc.text(`Phone: ${order.shippingAddress.phone}`, 320, 210);
+      doc.text(`City: ${order.shippingAddress.city}`, 320, 225);
+      doc.text(`Street: ${order.shippingAddress.street}`, 320, 240);
+      if (order.shippingAddress.nearestLandmark) {
+        doc.text(`Landmark: ${order.shippingAddress.nearestLandmark}`, 320, 255);
+      }
+      if (order.shippingAddress.buildingFloor) {
+        doc.text(`Building/Floor: ${order.shippingAddress.buildingFloor}`, 320, 270);
+      }
+      if (order.shippingAddress.preferredDeliveryTime) {
+        doc.text(`Preferred Delivery: ${order.shippingAddress.preferredDeliveryTime}`, 320, 285);
+      }
+
+      // Divider line
+      doc.moveTo(50, 310).lineTo(545, 310).strokeColor('#e5e7eb').lineWidth(1).stroke();
+
+      // Items section title
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#111827').text('Order Items', 50, 330);
+
+      // Draw table header
+      let y = 360;
+      doc.rect(50, y, 495, 24).fill('#f3f4f6');
+      doc.fillColor('#374151').font('Helvetica-Bold').fontSize(10);
+      doc.text('Product Name (English)', 60, y + 7, { width: 220, ellipsis: true });
+      doc.text('Qty', 290, y + 7, { width: 40, align: 'center' });
+      doc.text('Price', 340, y + 7, { width: 90, align: 'right' });
+      doc.text('Total', 440, y + 7, { width: 90, align: 'right' });
+
+      y += 24;
+      doc.font('Helvetica').fontSize(10).fillColor('#4b5563');
+
+      // Loop through items
+      for (const item of order.items) {
+        doc.text(item.productNameEn || 'Unknown Product', 60, y + 7, { width: 220, ellipsis: true });
+        doc.text(String(item.quantity), 290, y + 7, { width: 40, align: 'center' });
+        doc.text(`${item.price.toFixed(2)} EGP`, 340, y + 7, { width: 90, align: 'right' });
+        doc.text(`${(item.price * item.quantity).toFixed(2)} EGP`, 440, y + 7, { width: 90, align: 'right' });
+        
+        doc.moveTo(50, y + 24).lineTo(545, y + 24).strokeColor('#f3f4f6').lineWidth(1).stroke();
+        y += 24;
+
+        if (y > 700) {
+          doc.addPage();
+          y = 50;
+        }
+      }
+
+      y += 15;
+      if (y > 700) {
+        doc.addPage();
+        y = 50;
+      }
+
+      doc.fontSize(10).font('Helvetica');
+      const textRightX = 340;
+      const valueRightX = 440;
+
+      const itemsTotal = order.items.reduce((sum: number, it: any) => sum + it.price * it.quantity, 0);
+      doc.font('Helvetica').text('Subtotal:', textRightX, y, { width: 90, align: 'right' });
+      doc.text(`${itemsTotal.toFixed(2)} EGP`, valueRightX, y, { width: 90, align: 'right' });
+      y += 15;
+
+      if (order.shippingFee !== undefined) {
+        doc.text('Shipping Fee:', textRightX, y, { width: 90, align: 'right' });
+        doc.text(`${order.shippingFee.toFixed(2)} EGP`, valueRightX, y, { width: 90, align: 'right' });
+        y += 15;
+      }
+
+      if (order.shippingDiscount !== undefined && order.shippingDiscount > 0) {
+        doc.text('Shipping Discount:', textRightX, y, { width: 90, align: 'right' });
+        doc.text(`-${order.shippingDiscount.toFixed(2)} EGP`, valueRightX, y, { width: 90, align: 'right' });
+        y += 15;
+      }
+
+      if (order.codCharge !== undefined && order.codCharge > 0) {
+        doc.text('COD Extra Charge:', textRightX, y, { width: 90, align: 'right' });
+        doc.text(`${order.codCharge.toFixed(2)} EGP`, valueRightX, y, { width: 90, align: 'right' });
+        y += 15;
+      }
+
+      doc.moveTo(textRightX, y).lineTo(545, y).strokeColor('#e5e7eb').lineWidth(1).stroke();
+      y += 5;
+
+      doc.font('Helvetica-Bold').fontSize(12).fillColor('#111827');
+      doc.text('Grand Total:', textRightX, y, { width: 90, align: 'right' });
+      doc.text(`${order.totalAmount.toFixed(2)} EGP`, valueRightX, y, { width: 90, align: 'right' });
+
+      doc.fontSize(8).font('Helvetica').fillColor('#9ca3af').text(`Thank you for choosing eMart. Generated on ${new Date().toLocaleDateString()}`, 50, 770, { align: 'center' });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function sendNewOrderEmail(order: Order, settings: SystemSettings) {
+  const mailUser = settings.mailUser || 'itsparkeg@gmail.com';
+  const mailPass = settings.mailPass || 'gxht wyei usvw vxkh';
+  const salesEmail = settings.salesEmail || 'sales@itspark-eg.com';
+
+  if (!mailUser || !mailPass) {
+    console.error('SMTP Mail settings are not configured in system settings. Skipping new order email.');
+    return;
+  }
+
+  const domain = mailUser.includes('@') ? mailUser.split('@')[1] : 'gmail.com';
+  const isGmail = domain.toLowerCase() === 'gmail.com';
+
+  const transporter = nodemailer.createTransport(
+    isGmail
+      ? {
+          service: 'gmail',
+          auth: {
+            user: mailUser,
+            pass: mailPass,
+          },
+        }
+      : {
+          host: `smtp.${domain}`,
+          port: 587,
+          secure: false,
+          auth: {
+            user: mailUser,
+            pass: mailPass,
+          },
+        }
+  );
+
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await generateOrderPdf(order, settings);
+  } catch (pdfErr) {
+    console.error('Error generating Order PDF invoice:', pdfErr);
+    return;
+  }
+
+  const baseUrl = settings.baseUrl || 'http://localhost:3000';
+  const orderLink = `${baseUrl}/?tab=my-orders`; 
+  
+  const itemsHtml = order.items.map(item => `
+    <tr>
+      <td style="padding: 10px; border-bottom: 1px solid #f3f4f6; font-size: 14px; color: #374151;">
+        ${item.productNameEn} <br/>
+        <small style="color: #9ca3af;">${item.productNameAr || ''}</small>
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #f3f4f6; font-size: 14px; color: #374151; text-align: center;">
+        ${item.quantity}
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #f3f4f6; font-size: 14px; color: #374151; text-align: right;">
+        ${item.price.toFixed(2)} EGP
+      </td>
+      <td style="padding: 10px; border-bottom: 1px solid #f3f4f6; font-size: 14px; color: #374151; text-align: right;">
+        ${(item.price * item.quantity).toFixed(2)} EGP
+      </td>
+    </tr>
+  `).join('');
+
+  const shippingInfoHtml = `
+    <p style="margin: 4px 0; font-size: 14px;"><strong>City:</strong> ${order.shippingAddress.city}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Street Address:</strong> ${order.shippingAddress.street}</p>
+    <p style="margin: 4px 0; font-size: 14px;"><strong>Phone/Mobile:</strong> ${order.shippingAddress.phone}</p>
+    ${order.shippingAddress.nearestLandmark ? `<p style="margin: 4px 0; font-size: 14px;"><strong>Nearest Landmark:</strong> ${order.shippingAddress.nearestLandmark}</p>` : ''}
+    ${order.shippingAddress.buildingFloor ? `<p style="margin: 4px 0; font-size: 14px;"><strong>Building/Floor:</strong> ${order.shippingAddress.buildingFloor}</p>` : ''}
+    ${order.shippingAddress.preferredDeliveryTime ? `<p style="margin: 4px 0; font-size: 14px;"><strong>Preferred Delivery Time:</strong> ${order.shippingAddress.preferredDeliveryTime}</p>` : ''}
+  `;
+
+  const mailOptions = {
+    from: `"eMart System" <${mailUser}>`,
+    to: salesEmail,
+    subject: `🔔 New Order Placed - Order #${order.id}`,
+    text: `New Order Received! Order #${order.id}\nClient: ${order.customerName}\nTotal Amount: ${order.totalAmount} EGP\nPayment Method: ${order.paymentMethod}\nStatus: ${order.status}\nLink to view orders: ${orderLink}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 24px; max-width: 680px; margin: auto; border: 1px solid #e5e7eb; border-radius: 16px; background-color: #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+        <div style="text-align: center; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid #f3f4f6;">
+          <h1 style="color: #059669; font-size: 26px; font-weight: 800; margin: 0 0 4px 0;">New Order Received!</h1>
+          <p style="color: #6b7280; font-size: 14px; margin: 0;">Order ID: <span style="font-family: monospace; font-weight: bold; color: #111827;">${order.id}</span> &bull; Placed on ${new Date(order.createdAt).toLocaleString()}</p>
+        </div>
+
+        <div style="margin-bottom: 24px;">
+          <div style="background-color: #f9fafb; padding: 16px; border-radius: 12px; border: 1px solid #f3f4f6; margin-bottom: 16px;">
+            <h3 style="margin-top: 0; color: #111827; font-size: 15px; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Order Info</h3>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Payment Type:</strong> <span style="text-transform: uppercase;">${order.paymentMethod}</span></p>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Status:</strong> <span style="background-color: #fef3c7; color: #d97706; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 12px; text-transform: uppercase;">${order.status}</span></p>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Grand Total:</strong> <strong style="color: #059669;">${order.totalAmount.toFixed(2)} EGP</strong></p>
+          </div>
+
+          <div style="background-color: #f9fafb; padding: 16px; border-radius: 12px; border: 1px solid #f3f4f6;">
+            <h3 style="margin-top: 0; color: #111827; font-size: 15px; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Client Details</h3>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Name:</strong> ${order.customerName}</p>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Email:</strong> ${order.customerEmail}</p>
+            <p style="margin: 4px 0; font-size: 14px;"><strong>Registered ID:</strong> ${order.userId}</p>
+          </div>
+        </div>
+
+        <div style="background-color: #f9fafb; padding: 16px; border-radius: 12px; border: 1px solid #f3f4f6; margin-bottom: 24px;">
+          <h3 style="margin-top: 0; color: #111827; font-size: 15px; font-weight: bold; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px;">Shipping / Delivery Details</h3>
+          ${shippingInfoHtml}
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+          <thead>
+            <tr style="background-color: #f3f4f6;">
+              <th style="padding: 10px; text-align: left; font-size: 13px; font-weight: bold; color: #475569;">Item Description</th>
+              <th style="padding: 10px; text-align: center; font-size: 13px; font-weight: bold; color: #475569; width: 60px;">Qty</th>
+              <th style="padding: 10px; text-align: right; font-size: 13px; font-weight: bold; color: #475569; width: 100px;">Price</th>
+              <th style="padding: 10px; text-align: right; font-size: 13px; font-weight: bold; color: #475569; width: 100px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${itemsHtml}
+          </tbody>
+        </table>
+
+        <div style="width: 240px; margin-left: auto; margin-bottom: 32px; font-size: 14px;">
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #4b5563;">
+            <span>Subtotal:</span>
+            <span>${order.items.reduce((sum, it) => sum + it.price * it.quantity, 0).toFixed(2)} EGP</span>
+          </div>
+          ${order.shippingFee ? `
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #4b5563;">
+            <span>Shipping Fee:</span>
+            <span>${order.shippingFee.toFixed(2)} EGP</span>
+          </div>` : ''}
+          ${order.shippingDiscount ? `
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #059669;">
+            <span>Shipping Discount:</span>
+            <span>-${order.shippingDiscount.toFixed(2)} EGP</span>
+          </div>` : ''}
+          ${order.codCharge ? `
+          <div style="display: flex; justify-content: space-between; padding: 4px 0; color: #4b5563;">
+            <span>COD Extra Charge:</span>
+            <span>${order.codCharge.toFixed(2)} EGP</span>
+          </div>` : ''}
+          <div style="display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid #e5e7eb; font-weight: bold; color: #111827; font-size: 16px;">
+            <span>Total Amount:</span>
+            <span style="color: #059669;">${order.totalAmount.toFixed(2)} EGP</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 24px;">
+          <a href="${orderLink}" target="_blank" style="display: inline-block; padding: 12px 32px; background-color: #059669; color: #ffffff; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 14px; box-shadow: 0 4px 6px rgba(5, 150, 105, 0.15);">
+            Open Order on eMart Site
+          </a>
+        </div>
+
+        <p style="text-align: center; font-size: 11px; color: #9ca3af; margin: 0;">This is an automated notification from your eMart web application.</p>
+      </div>
+    `,
+    attachments: [
+      {
+        filename: `Invoice_${order.id}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      }
+    ]
+  };
+
+  await transporter.sendMail(mailOptions);
+  console.log(`Successfully sent new order email notification to ${salesEmail} for order ${order.id}`);
 }
 
 app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
@@ -949,6 +1243,12 @@ app.post('/api/orders/checkout', authenticate, async (req: Request, res: Respons
   db.transactions.push(newTx);
 
   saveDb(db);
+
+  // Send notification email to Sales Team asynchronously
+  sendNewOrderEmail(newOrder, settings).catch((err) => {
+    console.error('Failed to send sales notification email for new order:', err);
+  });
+
   res.status(201).json(newOrder);
 });
 
