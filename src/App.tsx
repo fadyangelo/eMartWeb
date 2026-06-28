@@ -19,6 +19,8 @@ import { RefundPolicy } from './components/RefundPolicy';
 import { PrivacyPolicy } from './components/PrivacyPolicy';
 import { TermsOfService } from './components/TermsOfService';
 import { UserProfileModal } from './components/UserProfileModal';
+import { ProductDetailsPage } from './components/ProductDetailsPage';
+import { OfflinePage } from './components/OfflinePage';
 
 const AppContent: React.FC = () => {
   const { 
@@ -34,7 +36,8 @@ const AppContent: React.FC = () => {
     setShowAuthModal, 
     t,
     settings,
-    isPromoActive
+    isPromoActive,
+    currentPath
   } = useApp();
 
   const [timeLeft, setTimeLeft] = React.useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -213,6 +216,9 @@ const AppContent: React.FC = () => {
     );
   };
 
+  const productMatch = currentPath.match(/^\/product\/([^/]+)/);
+  const productId = productMatch ? productMatch[1] : null;
+
   return (
     <div className="min-h-screen bg-[#fafafa] text-gray-900 font-sans flex flex-col selection:bg-emerald-100 selection:text-emerald-900">
       
@@ -244,7 +250,7 @@ const AppContent: React.FC = () => {
           >
             <div className="relative w-10 h-10 shrink-0">
               <img 
-                src="/images/logo.png" 
+                src={settings?.logoUrl || "/images/logo.png"} 
                 alt="eMart Logo" 
                 className="absolute inset-0 w-full h-full object-cover rounded-xl shadow-md border border-gray-100 transition duration-300 group-hover:scale-105"
                 referrerPolicy="no-referrer"
@@ -319,14 +325,16 @@ const AppContent: React.FC = () => {
           <div className="flex items-center gap-3">
             
             {/* Dual Language Switcher Toggle */}
-            <button
-              id="language-toggle-btn"
-              onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
-              className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl bg-white hover:bg-gray-50 text-xs font-bold text-gray-700 transition"
-            >
-              <Globe size={14} className="text-gray-400" />
-              <span>{t('language')}</span>
-            </button>
+            {settings?.allowMultiLanguage !== false && (
+              <button
+                id="language-toggle-btn"
+                onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+                className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-xl bg-white hover:bg-gray-50 text-xs font-bold text-gray-700 transition"
+              >
+                <Globe size={14} className="text-gray-400" />
+                <span>{t('language')}</span>
+              </button>
+            )}
 
             {/* Shopping Cart button with bubble */}
             <button
@@ -431,108 +439,116 @@ const AppContent: React.FC = () => {
 
       {/* 4. MAIN CONTENT ROUTER DISPLAY */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-12">
-        {activeTab === 'store' && <StoreFront />}
-        {activeTab === 'cart' && <CartPage />}
-        {activeTab === 'my-orders' && <MyOrders />}
-        {activeTab === 'wishlist' && <WishlistPage />}
-        {activeTab === 'refund-policy' && <RefundPolicy />}
-        {activeTab === 'privacy-policy' && <PrivacyPolicy />}
-        {activeTab === 'terms-of-service' && <TermsOfService />}
-        {activeTab === 'admin' && (
-          <div className="flex flex-col md:flex-row gap-6">
-            
-            {/* Mobile Admin Header with Hamburger Trigger */}
-            <div className="md:hidden flex items-center justify-between bg-white border border-gray-150 p-4 rounded-2xl mb-2 shadow-sm">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAdminMenuOpen(true)}
-                  className="p-2 hover:bg-gray-150 text-gray-700 rounded-xl transition cursor-pointer"
-                >
-                  <Menu size={20} />
-                </button>
-                <span className="font-bold text-sm tracking-tight text-gray-800">
-                  {isAr ? 'لوحة التحكم - ' : 'Admin - '}
-                  <span className="text-indigo-600 font-extrabold capitalize">
-                    {adminSubTab === 'admin-users' ? (isAr ? 'إدارة المستخدمين' : 'Users Management') : adminSubTab === 'shipping' ? (isAr ? 'الشحن والمدن' : 'Shipping & Cities') : adminSubTab}
-                  </span>
-                </span>
-              </div>
-              <img src="/images/logo.png" className="w-8 h-8 object-cover rounded-lg" alt="eMart logo" />
-            </div>
-
-            {/* Mobile Sliding Navigation Drawer with Backdrop */}
-            {adminMenuOpen && (
-              <div 
-                className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs md:hidden"
-                onClick={() => setAdminMenuOpen(false)}
-              >
-                <div 
-                  className="fixed inset-y-0 left-0 w-64 max-w-xs bg-white text-gray-700 p-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-left duration-200 border-r border-gray-100"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex justify-between items-center border-b border-gray-100 pb-4">
-                    <div className="flex items-center gap-2">
-                      <img src="/images/logo.png" className="w-6 h-6 object-cover rounded-md" alt="Logo" />
-                      <span className="font-extrabold text-gray-800 text-sm tracking-wider uppercase">
-                        {isAr ? 'خيارات الإدارة' : 'Admin Menu'}
-                      </span>
-                    </div>
-                    <button 
+        {settings?.isOnline === false && activeTab !== 'admin' ? (
+          <OfflinePage />
+        ) : productId ? (
+          <ProductDetailsPage productId={productId} />
+        ) : (
+          <>
+            {activeTab === 'store' && <StoreFront />}
+            {activeTab === 'cart' && <CartPage />}
+            {activeTab === 'my-orders' && <MyOrders />}
+            {activeTab === 'wishlist' && <WishlistPage />}
+            {activeTab === 'refund-policy' && <RefundPolicy />}
+            {activeTab === 'privacy-policy' && <PrivacyPolicy />}
+            {activeTab === 'terms-of-service' && <TermsOfService />}
+            {activeTab === 'admin' && (
+              <div className="flex flex-col md:flex-row gap-6">
+                
+                {/* Mobile Admin Header with Hamburger Trigger */}
+                <div className="md:hidden flex items-center justify-between bg-white border border-gray-150 p-4 rounded-2xl mb-2 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <button
                       type="button"
-                      onClick={() => setAdminMenuOpen(false)}
-                      className="text-gray-400 hover:text-gray-600 transition cursor-pointer"
+                      onClick={() => setAdminMenuOpen(true)}
+                      className="p-2 hover:bg-gray-150 text-gray-700 rounded-xl transition cursor-pointer"
                     >
-                      <X size={18} />
+                      <Menu size={20} />
+                    </button>
+                    <span className="font-bold text-sm tracking-tight text-gray-800">
+                      {isAr ? 'لوحة التحكم - ' : 'Admin - '}
+                      <span className="text-indigo-600 font-extrabold capitalize">
+                        {adminSubTab === 'admin-users' ? (isAr ? 'إدارة المستخدمين' : 'Users Management') : adminSubTab === 'shipping' ? (isAr ? 'الشحن والمدن' : 'Shipping & Cities') : adminSubTab}
+                      </span>
+                    </span>
+                  </div>
+                  <img src={settings?.logoUrl || "/images/logo.png"} className="w-8 h-8 object-cover rounded-lg" alt="eMart logo" />
+                </div>
+
+                {/* Mobile Sliding Navigation Drawer with Backdrop */}
+                {adminMenuOpen && (
+                  <div 
+                    className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs md:hidden"
+                    onClick={() => setAdminMenuOpen(false)}
+                  >
+                    <div 
+                      className="fixed inset-y-0 left-0 w-64 max-w-xs bg-white text-gray-700 p-6 flex flex-col gap-4 shadow-2xl animate-in slide-in-from-left duration-200 border-r border-gray-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                        <div className="flex items-center gap-2">
+                          <img src={settings?.logoUrl || "/images/logo.png"} className="w-6 h-6 object-cover rounded-md" alt="Logo" />
+                          <span className="font-extrabold text-gray-800 text-sm tracking-wider uppercase">
+                            {isAr ? 'خيارات الإدارة' : 'Admin Menu'}
+                          </span>
+                        </div>
+                        <button 
+                          type="button"
+                          onClick={() => setAdminMenuOpen(false)}
+                          className="text-gray-400 hover:text-gray-600 transition cursor-pointer"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                      
+                      {/* Menu Items */}
+                      <div className="flex-1 overflow-y-auto py-2 scrollbar-none">
+                        {renderAdminSubTabs(false)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Desktop Persistent Sidebar */}
+                <aside className={`hidden md:flex flex-col ${adminSidebarCollapsed ? 'w-20' : 'w-64'} shrink-0 bg-white text-gray-700 rounded-3xl p-5 border border-gray-200/80 shadow-xs min-h-[500px] h-fit sticky top-20 transition-all duration-300`}>
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-4">
+                    {!adminSidebarCollapsed && (
+                      <div className="flex items-center gap-2">
+                        <img src={settings?.logoUrl || "/images/logo.png"} className="w-6 h-6 object-cover rounded-md" alt="Logo" />
+                        <span className="font-extrabold text-xs text-gray-800 uppercase tracking-wider">{isAr ? 'لوحة التحكم' : 'Admin Panel'}</span>
+                      </div>
+                    )}
+                    {adminSidebarCollapsed && (
+                      <div className="mx-auto">
+                        <img src={settings?.logoUrl || "/images/logo.png"} className="w-6 h-6 object-cover rounded-md" alt="Logo" />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setAdminSidebarCollapsed(!adminSidebarCollapsed)}
+                      className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition cursor-pointer"
+                      title={adminSidebarCollapsed ? "Expand Menu" : "Collapse Menu"}
+                    >
+                      {adminSidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
                     </button>
                   </div>
-                  
-                  {/* Menu Items */}
-                  <div className="flex-1 overflow-y-auto py-2 scrollbar-none">
-                    {renderAdminSubTabs(false)}
+                  <div className="flex-1 overflow-y-auto scrollbar-none">
+                    {renderAdminSubTabs(adminSidebarCollapsed)}
                   </div>
+                </aside>
+
+                {/* Admin Content Viewport */}
+                <div className="flex-1 min-w-0">
+                  {adminSubTab === 'dashboard' && <Dashboard />}
+                  {adminSubTab === 'settings' && <AdminSettings />}
+                  {adminSubTab === 'payments' && <AdminPayments />}
+                  {adminSubTab === 'shipping' && <AdminShipping />}
+                  {adminSubTab !== 'dashboard' && adminSubTab !== 'settings' && adminSubTab !== 'payments' && adminSubTab !== 'shipping' && <AdminPanel />}
                 </div>
+
               </div>
             )}
-
-            {/* Desktop Persistent Sidebar */}
-            <aside className={`hidden md:flex flex-col ${adminSidebarCollapsed ? 'w-20' : 'w-64'} shrink-0 bg-white text-gray-700 rounded-3xl p-5 border border-gray-200/80 shadow-xs min-h-[500px] h-fit sticky top-20 transition-all duration-300`}>
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4 mb-4">
-                {!adminSidebarCollapsed && (
-                  <div className="flex items-center gap-2">
-                    <img src="/images/logo.png" className="w-6 h-6 object-cover rounded-md" alt="Logo" />
-                    <span className="font-extrabold text-xs text-gray-800 uppercase tracking-wider">{isAr ? 'لوحة التحكم' : 'Admin Panel'}</span>
-                  </div>
-                )}
-                {adminSidebarCollapsed && (
-                  <div className="mx-auto">
-                    <img src="/images/logo.png" className="w-6 h-6 object-cover rounded-md" alt="Logo" />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setAdminSidebarCollapsed(!adminSidebarCollapsed)}
-                  className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition cursor-pointer"
-                  title={adminSidebarCollapsed ? "Expand Menu" : "Collapse Menu"}
-                >
-                  {adminSidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto scrollbar-none">
-                {renderAdminSubTabs(adminSidebarCollapsed)}
-              </div>
-            </aside>
-
-            {/* Admin Content Viewport */}
-            <div className="flex-1 min-w-0">
-              {adminSubTab === 'dashboard' && <Dashboard />}
-              {adminSubTab === 'settings' && <AdminSettings />}
-              {adminSubTab === 'payments' && <AdminPayments />}
-              {adminSubTab === 'shipping' && <AdminShipping />}
-              {adminSubTab !== 'dashboard' && adminSubTab !== 'settings' && adminSubTab !== 'payments' && adminSubTab !== 'shipping' && <AdminPanel />}
-            </div>
-
-          </div>
+          </>
         )}
       </main>
 

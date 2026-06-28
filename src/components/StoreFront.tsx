@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, Category } from '../types';
-import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, X, Video, Share2 } from 'lucide-react';
+import { Search, SlidersHorizontal, ArrowUpDown, ChevronLeft, ChevronRight, Eye, ShoppingCart, Check, Heart, Star, FileText, Youtube, ZoomIn, ZoomOut, RotateCcw, X, Video, Share2 } from 'lucide-react';
 
 export const StoreFront: React.FC = () => {
-  const { language, t, addToCart, apiFetch, settings, getProductPrice, token, user } = useApp();
+  const { language, t, addToCart, apiFetch, settings, getProductPrice, token, user, navigate } = useApp();
 
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -99,6 +99,83 @@ export const StoreFront: React.FC = () => {
   const [activeImage, setActiveImage] = useState('');
   // Lightbox Zoom state
   const [isZoomed, setIsZoomed] = useState(false);
+  
+  // Hover Magnifier Zoom state
+  const [zoomOrigin, setZoomOrigin] = useState('center');
+  const [isHoveringImage, setIsHoveringImage] = useState(false);
+
+  const handleHoverMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - left) / width) * 100;
+    const y = ((e.clientY - top) / height) * 100;
+    setZoomOrigin(`${x}% ${y}%`);
+  };
+
+  // Zoom & Pan state
+  const [zoomScale, setZoomScale] = useState(1);
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoomScale <= 1) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panPosition.x, y: e.clientY - panPosition.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || zoomScale <= 1) return;
+    e.preventDefault();
+    setPanPosition({
+      x: e.clientX - dragStart.x,
+      y: e.clientY - dragStart.y
+    });
+  };
+
+  const handleMouseUpOrLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (zoomScale <= 1) return;
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      const touch = e.touches[0];
+      setDragStart({ x: touch.clientX - panPosition.x, y: touch.clientY - panPosition.y });
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || zoomScale <= 1) return;
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      setPanPosition({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const zoomFactor = 0.15;
+    let newScale = zoomScale + (e.deltaY < 0 ? zoomFactor : -zoomFactor);
+    newScale = Math.max(1, Math.min(5, newScale));
+    setZoomScale(newScale);
+    if (newScale === 1) {
+      setPanPosition({ x: 0, y: 0 });
+    }
+  };
+
+  useEffect(() => {
+    setZoomScale(1);
+    setPanPosition({ x: 0, y: 0 });
+  }, [activeImage, isZoomed]);
+
   // Active Tab: 'desc' | 'specs' | 'reviews'
   const [activeTab, setActiveTab] = useState<'desc' | 'specs' | 'reviews'>('desc');
   // New Review state
@@ -298,7 +375,7 @@ export const StoreFront: React.FC = () => {
                 if (activeIndex >= 0 && suggestions[activeIndex]) {
                   e.preventDefault();
                   const selected = suggestions[activeIndex];
-                  setSelectedProduct(selected);
+                  navigate(`/product/${selected.id}`);
                   setShowSuggestions(false);
                 }
               } else if (e.key === 'Escape') {
@@ -336,7 +413,7 @@ export const StoreFront: React.FC = () => {
                         key={p.id}
                         id={`autocomplete-item-${p.id}`}
                         onClick={() => {
-                          setSelectedProduct(p);
+                          navigate(`/product/${p.id}`);
                           setShowSuggestions(false);
                         }}
                         onMouseEnter={() => setActiveIndex(idx)}
@@ -543,7 +620,7 @@ export const StoreFront: React.FC = () => {
               {/* Product Image */}
               <div 
                 className="relative h-32 sm:h-48 bg-gray-50 overflow-hidden shrink-0 cursor-pointer"
-                onClick={() => setSelectedProduct(p)}
+                onClick={() => navigate(`/product/${p.id}`)}
               >
                 <img
                   referrerPolicy="no-referrer"
@@ -640,7 +717,7 @@ export const StoreFront: React.FC = () => {
                   </div>
                   
                   <h4 
-                    onClick={() => setSelectedProduct(p)}
+                    onClick={() => navigate(`/product/${p.id}`)}
                     className="font-bold text-gray-900 line-clamp-1 group-hover:text-emerald-600 transition cursor-pointer"
                   >
                     {language === 'ar' ? p.nameAr : p.nameEn}
@@ -747,7 +824,7 @@ export const StoreFront: React.FC = () => {
             <button
               id="share-product-btn"
               onClick={(e) => handleShareProduct(e, selectedProduct)}
-              className="absolute top-4 right-16 z-20 p-2 rounded-full bg-white/90 text-gray-500 hover:text-emerald-600 shadow-md border hover:scale-105 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="fixed top-6 right-20 md:absolute md:top-4 md:right-16 z-40 p-2.5 rounded-full bg-white text-gray-600 hover:text-emerald-600 shadow-lg border border-gray-100 hover:scale-105 transition flex items-center justify-center gap-1.5 cursor-pointer"
               title={language === 'ar' ? 'نسخ رابط المنتج للمشاركة' : 'Copy product link to share'}
             >
               {copiedId === selectedProduct.id ? (
@@ -766,9 +843,9 @@ export const StoreFront: React.FC = () => {
             <button
               id="close-quick-view-btn"
               onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 z-20 p-2 rounded-full bg-white/90 text-gray-500 hover:text-red-500 shadow-md border hover:scale-105 transition"
+              className="fixed top-6 right-6 md:absolute md:top-4 md:right-4 z-40 p-2.5 rounded-full bg-white text-gray-600 hover:text-red-500 shadow-lg border border-gray-100 hover:scale-105 transition flex items-center justify-center"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
 
             {/* Left Column: Multi-Image Zoom Gallery */}
@@ -1112,25 +1189,124 @@ export const StoreFront: React.FC = () => {
         </div>
       )}
 
-      {/* Full Screen Lightbox Zoom */}
+      {/* Full Screen Lightbox Zoom with High-Fidelity Pinch/Scroll and Pan controls */}
       {selectedProduct && isZoomed && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 transition-all animate-fade-in"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/95 p-4 transition-all overflow-hidden"
           onClick={() => setIsZoomed(false)}
         >
-          <button 
-            onClick={() => setIsZoomed(false)}
-            className="absolute top-6 right-6 p-2 bg-white/10 text-white rounded-full hover:bg-white/20 transition"
+          {/* Top Control Bar with instruction and close button */}
+          <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-50 text-white" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-black/40 px-4 py-2 rounded-xl backdrop-blur-md border border-white/10 text-xs flex flex-col gap-0.5">
+              <span className="font-bold text-gray-200">
+                {language === 'ar' ? 'طريقة الاستخدام:' : 'How to use:'}
+              </span>
+              <span className="text-gray-400 font-medium">
+                {language === 'ar' 
+                  ? '• استخدم عجلة الماوس أو علامتي (+ / -) للتكبير والتدقيق في التفاصيل' 
+                  : '• Use mouse scroll wheel or (+ / -) to zoom in/out'}
+              </span>
+              <span className="text-gray-400 font-medium">
+                {language === 'ar' 
+                  ? '• اضغط واسحب الصورة لتحريكها ورؤية كل جزء في المنتج' 
+                  : '• Click and drag image to pan and see each part'}
+              </span>
+            </div>
+
+            <button 
+              onClick={() => setIsZoomed(false)}
+              className="p-3 bg-white/10 hover:bg-white/25 text-white rounded-full transition shadow-lg border border-white/10 cursor-pointer flex items-center justify-center"
+              title={language === 'ar' ? 'إغلاق' : 'Close'}
+            >
+              <X size={24} />
+            </button>
+          </div>
+
+          {/* Canvas Wrapper */}
+          <div 
+            className="w-full max-w-5xl h-[70vh] md:h-[80vh] flex items-center justify-center overflow-hidden rounded-2xl bg-white/5 border border-white/10 p-4 relative cursor-grab active:cursor-grabbing select-none"
+            onClick={(e) => e.stopPropagation()}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <X size={24} />
-          </button>
-          <div className="max-w-4xl max-h-[85vh] flex items-center justify-center overflow-hidden rounded-2xl bg-white p-6">
-            <img 
-              referrerPolicy="no-referrer"
-              src={activeImage || selectedProduct.imageUrl} 
-              alt="Zoomed Product" 
-              className="max-w-full max-h-[75vh] object-contain scale-110 hover:scale-125 transition-transform duration-300"
-            />
+            <div 
+              style={{
+                transform: `translate(${panPosition.x}px, ${panPosition.y}px) scale(${zoomScale})`,
+                transition: isDragging ? 'none' : 'transform 0.15s ease-out',
+              }}
+              className="flex items-center justify-center max-w-full max-h-full origin-center"
+            >
+              <img 
+                referrerPolicy="no-referrer"
+                src={activeImage || selectedProduct.imageUrl} 
+                alt="Zoomed Product" 
+                draggable="false"
+                className="max-w-[85vw] max-h-[65vh] md:max-h-[75vh] object-contain select-none pointer-events-none"
+              />
+            </div>
+
+            {/* Magnifier glass indicator shown on scale 1 */}
+            {zoomScale === 1 && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white text-[10px] md:text-xs font-bold px-4 py-2 rounded-full border border-white/15 pointer-events-none flex items-center gap-2 tracking-wide animate-bounce">
+                <ZoomIn size={14} />
+                <span>
+                  {language === 'ar' ? 'قم بالتكبير لرؤية كل جزء في المنتج' : 'Zoom in to inspect details'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Interactive Zoom Controls Panel at the bottom */}
+          <div 
+            className="mt-6 flex items-center gap-4 bg-black/60 border border-white/10 px-6 py-3 rounded-2xl shadow-xl z-50 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setZoomScale(prev => Math.min(5, prev + 0.5))}
+              className="p-2 hover:bg-white/15 rounded-lg transition active:scale-95 cursor-pointer flex items-center justify-center border border-white/10"
+              title={language === 'ar' ? 'تكبير' : 'Zoom In'}
+            >
+              <ZoomIn size={18} />
+            </button>
+            
+            <div className="font-mono text-xs font-bold select-none min-w-[50px] text-center bg-white/5 px-3 py-1 rounded-md border border-white/10">
+              {Math.round(zoomScale * 100)}%
+            </div>
+
+            <button
+              onClick={() => setZoomScale(prev => {
+                const s = Math.max(1, prev - 0.5);
+                if (s === 1) setPanPosition({ x: 0, y: 0 });
+                return s;
+              })}
+              className="p-2 hover:bg-white/15 rounded-lg transition active:scale-95 cursor-pointer flex items-center justify-center border border-white/10"
+              title={language === 'ar' ? 'تصغير' : 'Zoom Out'}
+            >
+              <ZoomOut size={18} />
+            </button>
+
+            <span className="w-px h-5 bg-white/15"></span>
+
+            <button
+              onClick={() => {
+                setZoomScale(1);
+                setPanPosition({ x: 0, y: 0 });
+              }}
+              disabled={zoomScale === 1 && panPosition.x === 0 && panPosition.y === 0}
+              className="p-2 hover:bg-white/15 disabled:opacity-30 rounded-lg transition active:scale-95 cursor-pointer flex items-center justify-center border border-white/10 gap-1.5 text-xs font-semibold"
+              title={language === 'ar' ? 'إعادة ضبط' : 'Reset View'}
+            >
+              <RotateCcw size={16} />
+              <span className="hidden sm:inline">
+                {language === 'ar' ? 'إعادة ضبط' : 'Reset'}
+              </span>
+            </button>
           </div>
         </div>
       )}

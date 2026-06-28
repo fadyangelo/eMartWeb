@@ -430,70 +430,70 @@ export const AdminPayments: React.FC = () => {
         <div className="space-y-4">
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-left border-collapse" dir={isAr ? 'rtl' : 'ltr'}>
+              <table className="w-full lg:min-w-0 min-w-[800px] text-left border-collapse" dir={isAr ? 'rtl' : 'ltr'}>
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-gray-100">
-                    <th className="px-6 py-4">{isAr ? 'المعرف والعميل' : 'ID & Client'}</th>
-                    <th className="px-6 py-4">{isAr ? 'رقم الطلب' : 'Order ID'}</th>
-                    <th className="px-6 py-4">{isAr ? 'القيمة' : 'Amount'}</th>
-                    <th className="px-6 py-4">{isAr ? 'بوابة الدفع والتفاصيل' : 'Gateway & Details'}</th>
-                    <th className="px-6 py-4">{isAr ? 'الحالة والنوع' : 'Status & Type'}</th>
-                    <th className="px-6 py-4">{isAr ? 'التاريخ' : 'Date'}</th>
-                    <th className="px-6 py-4 text-center">{isAr ? 'الإجراءات' : 'Actions'}</th>
+                  <tr className="bg-slate-50 text-slate-500 uppercase text-[9px] xl:text-[10px] font-bold border-b border-gray-100">
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'المعرف والعميل' : 'ID & Client'}</th>
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'رقم الطلب' : 'Order ID'}</th>
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'القيمة' : 'Amount'}</th>
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'بوابة الدفع والتفاصيل' : 'Gateway & Details'}</th>
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'الحالة والنوع' : 'Status & Type'}</th>
+                    <th className="px-3 xl:px-4 py-3">{isAr ? 'التاريخ' : 'Date'}</th>
+                    <th className="px-3 xl:px-4 py-3 text-center">{isAr ? 'الإجراءات' : 'Actions'}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50 text-xs text-gray-700">
+                <tbody className="divide-y divide-gray-50 text-[11px] xl:text-xs text-gray-700">
                   {transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-slate-50/40 transition">
                       {/* ID & Client */}
-                      <td className="px-6 py-4">
+                      <td className="px-3 xl:px-4 py-3">
                         <div className="space-y-1">
-                          <span className="font-mono font-bold text-gray-800 block text-[10px]">{tx.id}</span>
-                          <div className="flex items-center gap-1.5 text-gray-500">
-                            <User size={12} className="text-gray-400" />
-                            <span>{tx.clientName}</span>
+                          <span className="font-mono font-bold text-gray-800 block text-[9px] xl:text-[10px]">{tx.id}</span>
+                          <div className="flex items-center gap-1 text-gray-500">
+                            <User size={11} className="text-gray-400 shrink-0" />
+                            <span className="truncate max-w-[100px] xl:max-w-[130px]">{tx.clientName}</span>
                           </div>
                           {tx.clientMobile && (
-                            <span className="text-[10px] text-gray-400 block font-mono">{tx.clientMobile}</span>
+                            <span className="text-[9px] text-gray-400 block font-mono">{tx.clientMobile}</span>
                           )}
                         </div>
                       </td>
-
+ 
                       {/* Order ID */}
-                      <td className="px-6 py-4">
-                        <span className="font-mono bg-indigo-50/50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold border border-indigo-100/30">
+                      <td className="px-3 xl:px-4 py-3">
+                        <span className="font-mono bg-indigo-50/50 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] xl:text-[10px] font-bold border border-indigo-100/30">
                           {tx.orderId}
                         </span>
                       </td>
-
+ 
                       {/* Amount */}
-                      <td className="px-6 py-4">
-                        <span className="font-mono font-bold text-slate-900 block text-sm">
+                      <td className="px-3 xl:px-4 py-3">
+                        <span className="font-mono font-bold text-slate-900 block text-xs xl:text-sm">
                           {tx.amount.toFixed(2)}
                         </span>
                       </td>
-
+ 
                       {/* Gateway & Details */}
-                      <td className="px-6 py-4">
+                      <td className="px-3 xl:px-4 py-3">
                         <div className="space-y-1">
                           <div className="flex items-center gap-1">
-                            <span className="font-bold text-gray-700 uppercase">{tx.paymentMethod}</span>
+                            <span className="font-bold text-gray-700 uppercase text-[10px]">{tx.paymentMethod}</span>
                             {tx.paymentGateway && (
-                              <span className="text-gray-400 text-[10px]">({tx.paymentGateway})</span>
+                              <span className="text-gray-400 text-[9px]">({tx.paymentGateway})</span>
                             )}
                           </div>
                           
                           {tx.transactionNumber && (
-                            <div className="text-[10px] text-gray-400 font-mono block">
+                            <div className="text-[9px] text-gray-400 font-mono block truncate max-w-[100px] xl:max-w-[140px]">
                               ID: {tx.transactionNumber}
                             </div>
                           )}
-
+ 
                           {tx.last4 && (
-                            <div className="text-[10px] text-gray-400 flex items-center gap-1 font-mono">
+                            <div className="text-[9px] text-gray-400 flex items-center gap-1 font-mono">
                               <span>💳 **** {tx.last4}</span>
                               {tx.gatewayMode && (
-                                <span className={`text-[9px] font-bold uppercase px-1 rounded ${
+                                <span className={`text-[8px] font-bold uppercase px-0.5 rounded ${
                                   tx.gatewayMode === 'live' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'
                                 }`}>
                                   {tx.gatewayMode}
@@ -503,48 +503,47 @@ export const AdminPayments: React.FC = () => {
                           )}
                         </div>
                       </td>
-
+ 
                       {/* Status & Type */}
-                      <td className="px-6 py-4">
+                      <td className="px-3 xl:px-4 py-3">
                         <div className="space-y-1">
                           <div>{getStatusBadge(tx.status)}</div>
-                          <span className={`text-[9px] font-bold block uppercase ${
+                          <span className={`text-[8px] xl:text-[9px] font-bold block uppercase ${
                             tx.type === 'refund' ? 'text-amber-600' : 'text-indigo-600'
                           }`}>
                             {tx.type || 'payment'}
                           </span>
                         </div>
                       </td>
-
+ 
                       {/* Date */}
-                      <td className="px-6 py-4 text-gray-400 font-mono text-[10px]">
+                      <td className="px-3 xl:px-4 py-3 text-gray-400 font-mono text-[9px] xl:text-[10px]">
                         {new Date(tx.createdAt).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', {
                           year: 'numeric', month: 'short', day: 'numeric',
-                          hour: '2-digit', minute: '2-digit'
                         })}
                       </td>
-
+ 
                       {/* Actions */}
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-3 xl:px-4 py-3 text-center">
                         {tx.paymentMethod === 'card' && tx.status !== 'Refund' && tx.type !== 'refund' ? (
                           <button
                             onClick={() => handleRefund(tx.id)}
                             disabled={actionLoadingId !== null}
-                            className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg text-[10px] font-bold transition cursor-pointer border border-rose-100"
+                            className="inline-flex items-center gap-1 bg-rose-50 hover:bg-rose-100 text-rose-700 px-2 py-1 rounded-lg text-[9px] xl:text-[10px] font-bold transition cursor-pointer border border-rose-100"
                           >
                             {actionLoadingId === tx.id ? (
-                              <Loader2 className="animate-spin" size={12} />
+                              <Loader2 className="animate-spin" size={10} />
                             ) : (
-                              <RotateCcw size={12} />
+                              <RotateCcw size={10} />
                             )}
                             <span>{isAr ? 'إجراء استرداد' : 'Refund'}</span>
                           </button>
                         ) : tx.status === 'Refund' || tx.type === 'refund' ? (
-                          <span className="text-[10px] text-gray-400 font-medium italic">
+                          <span className="text-[9px] xl:text-[10px] text-gray-400 font-medium italic">
                             {isAr ? 'تم الاسترداد' : 'Refunded'}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-400 font-medium">-</span>
+                          <span className="text-[9px] xl:text-[10px] text-gray-400 font-medium">-</span>
                         )}
                       </td>
                     </tr>

@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import { getDb, saveDb } from './server/db';
+import { getDb, saveDb, clearDbCache } from './server/db';
 import { User, Product, Category, Order, OrderStatus, StatusHistoryItem, SystemSettings, Transaction, BackupFile, ActivityLog, ShippingCity, RestoreEvent } from './src/types';
 import Stripe from 'stripe';
 import nodemailer from 'nodemailer';
@@ -1335,6 +1335,14 @@ app.get('/api/settings', (req: Request, res: Response) => {
       promoTimerTo: settings.promoTimerTo,
       promoTimerTextEn: settings.promoTimerTextEn,
       promoTimerTextAr: settings.promoTimerTextAr,
+      codExtraChargeEnabled: settings.codExtraChargeEnabled,
+      codExtraChargeAmount: settings.codExtraChargeAmount,
+      logoUrl: settings.logoUrl || '',
+      primaryColor: settings.primaryColor || '#4f46e5',
+      secondaryColor: settings.secondaryColor || '#10b981',
+      defaultLanguage: settings.defaultLanguage || 'en',
+      allowMultiLanguage: settings.allowMultiLanguage !== undefined ? settings.allowMultiLanguage : true,
+      isOnline: settings.isOnline !== undefined ? settings.isOnline : true,
     };
     res.json(publicSettings);
   }
@@ -2011,6 +2019,7 @@ app.post('/api/admin/backups/restore', requireAdminOrManager, (req: Request, res
 
     // Write to active db.json
     fs.writeFileSync(path.join(process.cwd(), 'db.json'), contentStr, 'utf-8');
+    clearDbCache();
 
     // Load active DB which now has the backup's tables and append restore record
     const db = getDb();
@@ -2104,6 +2113,7 @@ app.post('/api/admin/backups/upload', requireAdminOrManager, (req: Request, res:
     if (shouldRestore) {
       // Overwrite the main active db.json file
       fs.writeFileSync(path.join(process.cwd(), 'db.json'), JSON.stringify(parsed, null, 2), 'utf-8');
+      clearDbCache();
 
       const activeDb = getDb();
       if (!activeDb.backups) {

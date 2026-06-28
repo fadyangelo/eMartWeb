@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { SystemSettings } from '../types';
-import { Save, AlertTriangle, Check, Loader2, ShieldCheck, Mail, Link, Key, Eye, EyeOff } from 'lucide-react';
+import { Save, AlertTriangle, Check, Loader2, ShieldCheck, Mail, Link, Key, Eye, EyeOff, Palette, Globe, Upload, Image, Power } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
-  const { language, apiFetch } = useApp();
+  const { language, apiFetch, fetchSettings, token } = useApp();
   const [settings, setSettings] = useState<SystemSettings>({
     paymentOptions: ['cod', 'card'],
     paymentGateway: 'stripe',
@@ -23,28 +23,71 @@ export const AdminSettings: React.FC = () => {
     mailPass: '',
     baseUrl: '',
     salesEmail: '',
+    logoUrl: '',
+    primaryColor: '#4f46e5',
+    secondaryColor: '#10b981',
+    defaultLanguage: 'en',
+    allowMultiLanguage: true,
   });
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const [showStripeTest, setShowStripeTest] = useState(false);
   const [showStripeLive, setShowStripeLive] = useState(false);
   const [showKasheirTest, setShowKasheirTest] = useState(false);
   const [showKasheirLive, setShowKasheirLive] = useState(false);
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setLogoUploading(true);
+      setErrorMsg('');
+      
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = reader.result as string;
+        try {
+          const res = await apiFetch('/api/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file: base64data, name: file.name }),
+          });
+
+          if (res && res.url) {
+            setSettings(prev => ({ ...prev, logoUrl: res.url }));
+          } else {
+            setErrorMsg(language === 'ar' ? 'فشل رفع الشعار' : 'Failed to upload logo.');
+          }
+        } catch (err: any) {
+          setErrorMsg(err.message || 'Upload failed');
+        } finally {
+          setLogoUploading(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'FileReader failed');
+      setLogoUploading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchSettings = async () => {
+    const loadLocalSettings = async () => {
       try {
         setLoading(true);
         const res = await apiFetch('/api/settings');
         if (res) {
-          setSettings({
-            ...settings,
+          setSettings(prev => ({
+            ...prev,
             ...res,
-          });
+          }));
         }
       } catch (err: any) {
         setErrorMsg(err.message || 'Failed to load system settings.');
@@ -52,8 +95,8 @@ export const AdminSettings: React.FC = () => {
         setLoading(false);
       }
     };
-    fetchSettings();
-  }, []);
+    loadLocalSettings();
+  }, [token]);
 
   const handleCheckboxChange = (option: 'cod' | 'card') => {
     const current = [...settings.paymentOptions];
@@ -92,6 +135,7 @@ export const AdminSettings: React.FC = () => {
 
       if (res) {
         setSettings(res);
+        await fetchSettings();
         setSuccessMsg(language === 'ar' ? 'تم حفظ الإعدادات بنجاح!' : 'Settings saved successfully!');
         setTimeout(() => setSuccessMsg(''), 4000);
       }
@@ -148,7 +192,276 @@ export const AdminSettings: React.FC = () => {
           </div>
         )}
 
-        {/* 1. PAYMENT OPTIONS */}
+        {/* 1. BRANDING & THEME CUSTOMIZATION */}
+        <div className="space-y-6 border border-gray-100 p-6 rounded-2xl bg-slate-50/50">
+          <h3 className="text-sm font-bold text-gray-800 border-b border-gray-150 pb-2 flex items-center gap-2">
+            <Palette className="text-indigo-600" size={16} />
+            {isAr ? 'الهوية البصرية والألوان واللغات' : 'Visual Identity, Colors & Languages'}
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Logo Upload */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Image size={14} className="text-gray-400" />
+                {isAr ? 'شعار المتجر (Logo)' : 'Store Logo'}
+              </label>
+              
+              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+                <div className="relative w-16 h-16 shrink-0 bg-gray-50 rounded-xl border border-gray-150 flex items-center justify-center overflow-hidden">
+                  {settings.logoUrl ? (
+                    <img 
+                      src={settings.logoUrl} 
+                      alt="Store Logo" 
+                      className="w-full h-full object-contain"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="text-gray-400 text-xs font-bold">No Logo</div>
+                  )}
+                  {logoUploading && (
+                    <div className="absolute inset-0 bg-black/45 flex items-center justify-center">
+                      <Loader2 className="animate-spin text-white" size={18} />
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition">
+                      <Upload size={13} />
+                      {isAr ? 'رفع ملف شعار' : 'Upload File'}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleLogoUpload} 
+                        className="hidden" 
+                        disabled={logoUploading}
+                      />
+                    </label>
+                    {settings.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setSettings(prev => ({ ...prev, logoUrl: '' }))}
+                        className="text-xs font-bold text-rose-600 hover:text-rose-800 px-2 py-1.5 hover:bg-rose-50 rounded-lg transition"
+                      >
+                        {isAr ? 'إزالة' : 'Remove'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    {isAr 
+                      ? 'صيغ PNG, JPG أو SVG. الحد الأقصى 2 ميجابايت.' 
+                      : 'Recommended PNG, JPG or SVG format. Max size 2MB.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Direct URL input */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-gray-450 uppercase tracking-wider block">
+                  {isAr ? 'أو أدخل رابط الشعار المباشر' : 'Or enter direct Logo URL'}
+                </span>
+                <input
+                  type="text"
+                  value={settings.logoUrl || ''}
+                  onChange={(e) => setSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
+                  placeholder="https://example.com/logo.png"
+                  className="w-full text-xs bg-white border border-gray-250 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {/* Colors Pickers */}
+            <div className="space-y-4">
+              <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Palette size={14} className="text-gray-400" />
+                {isAr ? 'ألوان الموقع الرئيسية' : 'Website Accent Colors'}
+              </label>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Primary Color */}
+                <div className="space-y-2 bg-white p-3.5 rounded-xl border border-gray-150 shadow-sm">
+                  <span className="text-[10px] font-bold text-gray-500 block">
+                    {isAr ? 'اللون الرئيسي (الأساسي)' : 'Primary Color'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="color" 
+                      value={settings.primaryColor || '#4f46e5'}
+                      onChange={(e) => setSettings(prev => ({ ...prev, primaryColor: e.target.value }))}
+                      className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
+                    />
+                    <input 
+                      type="text"
+                      value={settings.primaryColor || '#4f46e5'}
+                      onChange={(e) => setSettings(prev => ({ ...prev, primaryColor: e.target.value }))}
+                      className="flex-1 text-xs font-mono border border-gray-200 rounded px-2 py-1 uppercase text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Secondary Color */}
+                <div className="space-y-2 bg-white p-3.5 rounded-xl border border-gray-150 shadow-sm">
+                  <span className="text-[10px] font-bold text-gray-500 block">
+                    {isAr ? 'اللون الثانوي (الخصومات والنجاح)' : 'Secondary Color'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="color" 
+                      value={settings.secondaryColor || '#10b981'}
+                      onChange={(e) => setSettings(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                      className="w-8 h-8 rounded border border-gray-200 cursor-pointer"
+                    />
+                    <input 
+                      type="text"
+                      value={settings.secondaryColor || '#10b981'}
+                      onChange={(e) => setSettings(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                      className="flex-1 text-xs font-mono border border-gray-200 rounded px-2 py-1 uppercase text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Theme Live Preview */}
+              <div className="bg-white p-3.5 rounded-xl border border-gray-100 shadow-sm flex items-center justify-between text-xs">
+                <span className="font-bold text-gray-500">
+                  {isAr ? 'معاينة حية للمظهر:' : 'Theme live preview:'}
+                </span>
+                <div className="flex gap-2">
+                  <span 
+                    style={{ backgroundColor: settings.primaryColor || '#4f46e5' }}
+                    className="px-3 py-1 text-[10px] font-extrabold text-white rounded-lg shadow-xs"
+                  >
+                    Primary Button
+                  </span>
+                  <span 
+                    style={{ backgroundColor: settings.secondaryColor || '#10b981' }}
+                    className="px-3 py-1 text-[10px] font-extrabold text-white rounded-lg shadow-xs"
+                  >
+                    Secondary Button
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-100 my-4"></div>
+
+          {/* Languages Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Default site language */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Globe size={14} className="text-gray-400" />
+                {isAr ? 'اللغة الافتراضية للموقع' : 'Default Site Language'}
+              </label>
+              <p className="text-[10px] text-gray-400">
+                {isAr 
+                  ? 'اللغة التي يفتح بها الموقع تلقائياً للزوار الجدد' 
+                  : 'The language that the store will load with by default for first-time visitors.'}
+              </p>
+              <select
+                value={settings.defaultLanguage || 'en'}
+                onChange={(e) => setSettings(prev => ({ ...prev, defaultLanguage: e.target.value as 'en' | 'ar' }))}
+                className="w-full text-xs bg-white border border-gray-250 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium text-gray-700"
+              >
+                <option value="en">English (الانجليزية)</option>
+                <option value="ar">العربية (Arabic)</option>
+              </select>
+            </div>
+
+            {/* Allow Multi-Language */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Globe size={14} className="text-gray-400" />
+                {isAr ? 'إتاحة اللغتين (تعدد اللغات)' : 'Allow Multi-Language (Dual Eng/Ar)'}
+              </label>
+              <p className="text-[10px] text-gray-400">
+                {isAr 
+                  ? 'تفعيل أو تعطيل خيار تبديل اللغة للعملاء (عند التعطيل سيجبر الجميع على استخدام اللغة الافتراضية)' 
+                  : 'Enable or disable the language switcher toggle for visitors (disabling forces all clients to use default language).'}
+              </p>
+              
+              <div className="flex items-center gap-6 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="radio"
+                    name="allowMultiLanguage"
+                    checked={settings.allowMultiLanguage !== false}
+                    onChange={() => setSettings(prev => ({ ...prev, allowMultiLanguage: true }))}
+                    className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>
+                    {isAr ? 'نعم، اسمح بتبديل اللغة (ثنائي اللغة)' : 'Yes, allow switching (Bilingual)'}
+                  </span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="radio"
+                    name="allowMultiLanguage"
+                    checked={settings.allowMultiLanguage === false}
+                    onChange={() => setSettings(prev => ({ ...prev, allowMultiLanguage: false }))}
+                    className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>
+                    {isAr ? 'لا، لغة واحدة فقط (اللغة الافتراضية)' : 'No, force Default Language only'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-gray-100 my-4"></div>
+
+          {/* Store Status Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                <Power size={14} className="text-gray-400" />
+                {isAr ? 'حالة المتجر (متصل / غير متصل)' : 'Store Status (Online / Offline)'}
+              </label>
+              <p className="text-[10px] text-gray-400">
+                {isAr 
+                  ? 'عند إيقاف تشغيل المتجر، سيظهر تنبيه للعملاء في الواجهة الأمامية ولن يتمكنوا من تصفح المنتجات أو تقديم طلبات جديدة.' 
+                  : 'When the store is offline, a message will appear on the storefront, and clients will not be able to browse products or make orders.'}
+              </p>
+              
+              <div className="flex items-center gap-6 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="radio"
+                    name="isOnline"
+                    checked={settings.isOnline !== false}
+                    onChange={() => setSettings(prev => ({ ...prev, isOnline: true }))}
+                    className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full inline-block animate-pulse"></span>
+                    {isAr ? 'مفتوح (متصل بالإنترنت)' : 'Online (Open for business)'}
+                  </span>
+                </label>
+                
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                  <input
+                    type="radio"
+                    name="isOnline"
+                    checked={settings.isOnline === false}
+                    onChange={() => setSettings(prev => ({ ...prev, isOnline: false }))}
+                    className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 bg-rose-500 rounded-full inline-block"></span>
+                    {isAr ? 'مغلق مؤقتاً (غير متصل بالإنترنت)' : 'Offline (Temporarily Closed)'}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. PAYMENT OPTIONS */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold text-gray-800 border-b border-gray-100 pb-2 flex items-center gap-2">
             <span className="w-1.5 h-4 bg-indigo-600 rounded-full"></span>
@@ -543,14 +856,23 @@ export const AdminSettings: React.FC = () => {
                 <Key size={14} className="text-indigo-500" />
                 {isAr ? 'كلمة مرور التطبيق (SMTP Password)' : 'SMTP Password / App Password'}
               </label>
-              <input
-                id="smtp-password-input"
-                type="password"
-                value={settings.mailPass || ''}
-                onChange={(e) => setSettings({ ...settings, mailPass: e.target.value })}
-                placeholder="••••••••••••••••"
-                className="w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
+              <div className="relative">
+                <input
+                  id="smtp-password-input"
+                  type={showSmtpPass ? "text" : "password"}
+                  value={settings.mailPass || ''}
+                  onChange={(e) => setSettings({ ...settings, mailPass: e.target.value })}
+                  placeholder="••••••••••••••••"
+                  className={`w-full text-xs font-mono bg-white border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isAr ? 'pl-10' : 'pr-10'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSmtpPass(!showSmtpPass)}
+                  className={`absolute top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none ${isAr ? 'left-3' : 'right-3'}`}
+                >
+                  {showSmtpPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
               <p className="text-[10px] text-gray-400 mt-1">
                 {isAr ? 'كلمة مرور التطبيق المكونة من ١٦ حرفًا لحساب Gmail الخاص بك.' : 'For Gmail, use a 16-character Google App Password.'}
               </p>

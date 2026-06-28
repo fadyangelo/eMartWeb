@@ -36,6 +36,8 @@ interface AppContextType {
   fetchSettings: () => Promise<void>;
   isPromoActive: () => boolean;
   getProductPrice: (product: Product) => { original: number; final: number; hasDiscount: boolean; discountText: string };
+  currentPath: string;
+  navigate: (path: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -306,6 +308,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalCallback, setAuthModalCallback] = useState<(() => void) | null>(null);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [currentPath, setCurrentPath] = useState<string>(window.location.pathname);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const navigate = (path: string) => {
+    window.history.pushState(null, '', path);
+    setCurrentPath(path);
+  };
 
   const fetchSettings = async () => {
     try {
@@ -354,6 +370,106 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return { original, final, hasDiscount, discountText };
   };
+
+  // Helper functions to darken/lighten hex colors for dynamic styling
+  const hexToRgb = (hex: string) => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  };
+
+  const rgbToHex = (r: number, g: number, b: number) => {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  };
+
+  const darkenColor = (hex: string, percent: number) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const r = Math.max(0, Math.floor(rgb.r * (1 - percent / 100)));
+    const g = Math.max(0, Math.floor(rgb.g * (1 - percent / 100)));
+    const b = Math.max(0, Math.floor(rgb.b * (1 - percent / 100)));
+    return rgbToHex(r, g, b);
+  };
+
+  const lightenColor = (hex: string, percent: number) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const r = Math.min(255, Math.floor(rgb.r + (255 - rgb.r) * (percent / 100)));
+    const g = Math.min(255, Math.floor(rgb.g + (255 - rgb.g) * (percent / 100)));
+    const b = Math.min(255, Math.floor(rgb.b + (255 - rgb.b) * (percent / 100)));
+    return rgbToHex(r, g, b);
+  };
+
+  // Sync settings-specific overrides (colors, languages)
+  useEffect(() => {
+    if (!settings) return;
+
+    // 1. Language Handling
+    if (settings.allowMultiLanguage === false) {
+      // Force defaultLanguage
+      const targetLang = (settings.defaultLanguage || 'en') as Language;
+      if (language !== targetLang) {
+        setLanguageState(targetLang);
+      }
+    } else {
+      // If multi language is allowed but user has no set preference, fallback to defaultLanguage
+      if (!localStorage.getItem('emart_lang')) {
+        const targetLang = (settings.defaultLanguage || 'en') as Language;
+        if (language !== targetLang) {
+          setLanguageState(targetLang);
+        }
+      }
+    }
+
+    // 2. Color Scheme Handling - CSS Overrides
+    const primary = settings.primaryColor || '#4f46e5';
+    const primaryDark = darkenColor(primary, 15);
+    const primaryLight = lightenColor(primary, 92);
+
+    const secondary = settings.secondaryColor || '#10b981';
+    const secondaryDark = darkenColor(secondary, 15);
+    const secondaryLight = lightenColor(secondary, 92);
+
+    let styleEl = document.getElementById('custom-theme-overrides');
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = 'custom-theme-overrides';
+      document.head.appendChild(styleEl);
+    }
+
+    styleEl.innerHTML = `
+      :root {
+        --color-primary: ${primary};
+        --color-secondary: ${secondary};
+      }
+      /* Override indigo class rules */
+      .bg-indigo-600 { background-color: ${primary} !important; }
+      .text-indigo-600 { color: ${primary} !important; }
+      .border-indigo-600 { border-color: ${primary} !important; }
+      .hover\\:bg-indigo-700:hover { background-color: ${primaryDark} !important; }
+      .hover\\:text-indigo-600:hover { color: ${primary} !important; }
+      .bg-indigo-50 { background-color: ${primaryLight} !important; }
+      .text-indigo-700 { color: ${primary} !important; }
+      .border-indigo-100 { border-color: ${primaryLight} !important; }
+      .focus\\:ring-indigo-500:focus { --tw-ring-color: ${primary} !important; }
+      .peer-checked\\:bg-indigo-600:checked ~ div, .peer-checked\\:bg-indigo-600:checked { background-color: ${primary} !important; }
+      .border-indigo-600 { border-color: ${primary} !important; }
+
+      /* Override emerald class rules (secondary accents like success, checkout, discount) */
+      .bg-emerald-600 { background-color: ${secondary} !important; }
+      .text-emerald-600 { color: ${secondary} !important; }
+      .border-emerald-600 { border-color: ${secondary} !important; }
+      .hover\\:bg-emerald-700:hover { background-color: ${secondaryDark} !important; }
+      .hover\\:text-emerald-600:hover { color: ${secondary} !important; }
+      .bg-emerald-50 { background-color: ${secondaryLight} !important; }
+      .text-emerald-700 { color: ${secondary} !important; }
+      .border-emerald-100 { border-color: ${secondaryLight} !important; }
+      .focus\\:ring-emerald-500:focus { --tw-ring-color: ${secondary} !important; }
+    `;
+  }, [settings, language]);
 
   useEffect(() => {
     localStorage.setItem('emart_lang', language);
@@ -488,6 +604,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchSettings,
         isPromoActive,
         getProductPrice,
+        currentPath,
+        navigate,
       }}
     >
       {children}

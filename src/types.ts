@@ -177,6 +177,12 @@ export interface SystemSettings {
   mailPass?: string;
   baseUrl?: string;
   salesEmail?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  defaultLanguage?: 'en' | 'ar';
+  allowMultiLanguage?: boolean;
+  isOnline?: boolean;
 }
 
 export interface Transaction {

@@ -343,6 +343,12 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   mailPass: 'gxht wyei usvw vxkh',
   baseUrl: 'https://shop.itspark-eg.com',
   salesEmail: 'sales@itspark-eg.com',
+  logoUrl: '',
+  primaryColor: '#4f46e5',
+  secondaryColor: '#10b981',
+  defaultLanguage: 'en',
+  allowMultiLanguage: true,
+  isOnline: true,
 };
 
 export const generateMockTransactions = (orders: Order[]): Transaction[] => {
@@ -453,7 +459,16 @@ export const DEFAULT_CITIES: ShippingCity[] = [
   { id: 'c-27', nameEn: 'Beni Suef', nameAr: 'بني سويف', defaultShippingFee: 70, minOrderAmount: 100, discountAmount: 30, minOrderForDiscount: 200 }
 ];
 
+let cachedDb: DatabaseSchema | null = null;
+
+export const clearDbCache = () => {
+  cachedDb = null;
+};
+
 export const getDb = (): DatabaseSchema => {
+  if (cachedDb) {
+    return cachedDb;
+  }
   if (!fs.existsSync(DB_PATH)) {
     const initialOrders = generateMockOrders();
     const initialDb: DatabaseSchema = {
@@ -469,11 +484,15 @@ export const getDb = (): DatabaseSchema => {
       shippingCities: DEFAULT_CITIES,
       restores: []
     };
+    cachedDb = initialDb;
     saveDb(initialDb);
     return initialDb;
   }
   try {
     const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    if (!raw || raw.trim() === '') {
+      throw new Error('Database file is empty or whitespace only');
+    }
     const parsed = JSON.parse(raw) as DatabaseSchema;
     let updated = false;
     
@@ -501,6 +520,7 @@ export const getDb = (): DatabaseSchema => {
       parsed.restores = [];
       updated = true;
     }
+    cachedDb = parsed;
     if (updated) {
       saveDb(parsed);
     }
@@ -521,12 +541,14 @@ export const getDb = (): DatabaseSchema => {
       shippingCities: DEFAULT_CITIES,
       restores: []
     };
+    cachedDb = initialDb;
     saveDb(initialDb);
     return initialDb;
   }
 };
 
 export const saveDb = (db: DatabaseSchema) => {
+  cachedDb = db;
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
   } catch (error) {
